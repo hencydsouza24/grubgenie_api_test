@@ -39,7 +39,8 @@ case "$CMD" in
 
   items-search)
     Q=${2:?"Usage: fetch_menu.sh items-search <query>"}
-    curl -s "$BASE/v1/partner/menu/item/search?q=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$Q")" \
+    curl -sG "$BASE/v1/partner/menu/item/search" \
+      --data-urlencode "q=$Q" \
       -H "Authorization: Bearer $PARTNER_TOKEN" | jq '.result[] | {_id, name: .itemName, price}'
     ;;
 

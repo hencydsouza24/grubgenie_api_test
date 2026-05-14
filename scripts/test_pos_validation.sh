@@ -5,8 +5,10 @@
 
 set -e
 
-BASE_URL="${BASE_URL:-http://localhost:3000/api}"
-TOKEN="${TOKEN:-your_bearer_token_here}"
+SKILL=$(dirname "$0")
+eval "$(bash $SKILL/auth.sh 2>/dev/null)"
+BASE_URL="${BASE:-http://localhost:3000}"
+TOKEN="${PARTNER_TOKEN}"
 
 echo "=== Testing POS Validation (Petpooja) ==="
 

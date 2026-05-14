@@ -2,24 +2,110 @@
 name: grubgenie-api-test
 description: |
   GrubGenie API testing skill. Provides ready-to-run helper scripts and curl commands for all
-  GrubGenie API flows against localhost:3000, including test credentials, token extraction
-  patterns, and complete E2E flows (dine-in, pay-in-person, Stripe payment, partner management,
-  admin, agent testing, combo ordering, order approval/rejection). Use when testing GrubGenie
-  APIs, verifying new features, debugging endpoint behavior, walking through the
+  GrubGenie API flows. Supports local (localhost:3000), dev (dev-backend.grubgenie.ai), and
+  prod (backend.grubgenie.ai) environments via selectable env.sh / env.ps1. Works on macOS,
+  Linux, Windows (Git Bash), and Windows (PowerShell). Includes test credentials, token
+  extraction patterns, and complete E2E flows (dine-in, pay-in-person, Stripe payment, partner
+  management, admin, agent testing, combo ordering, order approval/rejection). Use when testing
+  GrubGenie APIs, verifying new features, debugging endpoint behavior, walking through the
   diner/partner/admin flows interactively, or reproducing auth/permission bugs.
 allowed-tools: "Bash(python:*) Bash(npm:*) Bash(bash:*) WebFetch mcp__plugin_context-mode_context-mode__ctx_execute mcp__plugin_context-mode_context-mode__ctx_search mcp__plugin_context-mode_context-mode__ctx_batch_execute"
 ---
 
 # GrubGenie API Test Skill
 
+## Onboarding (First Time Setup)
+
+### macOS / Linux
+
+**Step 1 — Install dependencies:**
+```bash
+# macOS
+brew install jq
+
+# Ubuntu/Debian
+sudo apt-get install -y jq curl
+```
+
+**Step 2 — Set your skill path:**
+```bash
+export SKILL=~/.claude/skills/grubgenie-api-test/scripts
+```
+
+**Step 3 — Pick environment, authenticate, test:**
+```bash
+eval "$(bash $SKILL/env.sh local)"   # http://localhost:3000
+eval "$(bash $SKILL/env.sh dev)"     # https://dev-backend.grubgenie.ai
+eval "$(bash $SKILL/env.sh prod)"    # https://backend.grubgenie.ai
+
+eval "$(bash $SKILL/auth.sh)"
+bash $SKILL/fetch_menu.sh restaurant-info
+```
+
+---
+
+### Windows — Option A: PowerShell (recommended)
+
+No extra dependencies — PowerShell ships with `Invoke-RestMethod` (JSON-native).
+
+**Step 1 — Set your skill path:**
+```powershell
+$SKILL = "$HOME\.claude\skills\grubgenie-api-test\scripts\powershell"
+```
+
+**Step 2 — Pick environment, authenticate, test:**
+```powershell
+. $SKILL\env.ps1 local    # http://localhost:3000
+. $SKILL\env.ps1 dev      # https://dev-backend.grubgenie.ai
+. $SKILL\env.ps1 prod     # https://backend.grubgenie.ai
+
+. $SKILL\auth.ps1
+```
+
+**Full E2E dine-in flow:**
+```powershell
+. $SKILL\flow_dine_in_pay.ps1 -ItemId 691bf10018f1d3c34db1db00 -Qty 2
+```
+
+**Step by step:**
+```powershell
+. $SKILL\auth.ps1
+. $SKILL\create_cart.ps1
+. $SKILL\order_item.ps1 -ItemId 691bf10018f1d3c34db1db00 -Qty 2
+```
+
+---
+
+### Windows — Option B: Git Bash
+
+Requires bash + curl + jq.
+
+1. Install **Git for Windows**: https://git-scm.com/download/win
+2. Install **jq**:
+   - Download `jq-windows-amd64.exe` from https://github.com/jqlang/jq/releases
+   - Rename to `jq.exe`, place in `C:\Program Files\Git\usr\bin\`
+3. Open **Git Bash**
+4. Run scripts exactly like macOS/Linux:
+```bash
+export SKILL="$HOME/.claude/skills/grubgenie-api-test/scripts"
+eval "$(bash $SKILL/env.sh dev)"
+eval "$(bash $SKILL/auth.sh)"
+bash $SKILL/fetch_menu.sh restaurant-info
+```
+
+---
+
 ## Quick Start
 
-Test against `http://localhost:3000`. All helper scripts live in `scripts/`.
+All helper scripts live in `scripts/`. Choose your environment with `env.sh` before auth.
 
 ```bash
 SKILL=/path/to/grubgenie-api-test/scripts
 
-# Step 1: Authenticate (sets PARTNER_TOKEN, DINER_TOKEN, DINER_ID, TABLE_ID, BASE)
+# Step 1: Set environment (local | dev | prod)
+eval "$(bash $SKILL/env.sh local)"
+
+# Step 2: Authenticate (sets PARTNER_TOKEN, DINER_TOKEN, DINER_ID, TABLE_ID, BASE)
 eval "$(bash $SKILL/auth.sh)"
 
 # Step 2: Create a cart
@@ -72,7 +158,7 @@ mcp_context_mode_ctx_execute(
   code: """
     SKILL=/path/to/grubgenie-api-test/scripts
     eval "$(bash $SKILL/auth.sh 2>/dev/null)"
-    curl -s -X PATCH 'http://localhost:3000/v1/partner/order-history/respond/ORDER_ID' \\
+    curl -s -X PATCH "$BASE/v1/partner/order-history/respond/ORDER_ID" \\
       -H "Authorization: Bearer $PARTNER_TOKEN" \\
       -H 'Content-Type: application/json' \\
       -d '{"action":"accept","modifications":[{"itemId":"<id>","quantity":2}]}'
@@ -105,8 +191,11 @@ When a script fails:
 
 ### Script Inventory
 
+**Bash (macOS / Linux / Git Bash on Windows):**
+
 | Script | Purpose | Usage |
 |--------|---------|-------|
+| `env.sh` | Select target environment | `eval "$(bash $SKILL/env.sh [local\|dev\|prod])"` |
 | `auth.sh` | Partner + diner auth, first table | `eval "$(bash $SKILL/auth.sh)"` |
 | `create_cart.sh` | Create cart for session | `export CART_ID=$(bash $SKILL/create_cart.sh)` |
 | `order_item.sh` | Order menu item | `bash $SKILL/order_item.sh <itemId> [qty]` |
@@ -118,6 +207,16 @@ When a script fails:
 | `fetch_menu.sh` | Browse menu | `bash $SKILL/fetch_menu.sh [items\|categories\|restaurant-info]` |
 | `agent_test.sh` | Agent chat | `bash $SKILL/agent_test.sh "<message>" [dinerId]` |
 | `reset_tables.sh` | Reset all tables | `bash $SKILL/reset_tables.sh` |
+
+**PowerShell (Windows — dot-source with `. script.ps1`):**
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `powershell\env.ps1` | Select target environment | `. $SKILL\env.ps1 [local\|dev\|prod]` |
+| `powershell\auth.ps1` | Partner + diner auth, first table | `. $SKILL\auth.ps1` |
+| `powershell\create_cart.ps1` | Create cart for session | `. $SKILL\create_cart.ps1` |
+| `powershell\order_item.ps1` | Order menu item | `. $SKILL\order_item.ps1 -ItemId <id> [-Qty 2]` |
+| `powershell\flow_dine_in_pay.ps1` | Full E2E dine-in + pay | `. $SKILL\flow_dine_in_pay.ps1 [-ItemId <id>] [-Qty 2]` |
 
 ### Script Dependencies
 
@@ -193,7 +292,7 @@ echo "Using POS item: $ITEM_ID"
 #### Step 3: Create Menu Item with POS Link
 
 ```bash
-curl -s -X POST "http://localhost:3000/v1/partner/menu" \
+curl -s -X POST "$BASE/v1/partner/menu" \
   -H "Authorization: Bearer $PARTNER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -252,7 +351,7 @@ bash $SKILL/branch_pos_config.sh disable     # Remove config
 
 Enable manual approval on branch:
 ```bash
-curl -X PUT http://localhost:3000/v1/partner/branch/update-branch/3XSJT \
+curl -X PUT $BASE/v1/partner/branch/update-branch/3XSJT \
   -H "Authorization: Bearer $PARTNER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"orderAcceptanceMode":"manual"}'
@@ -261,13 +360,13 @@ curl -X PUT http://localhost:3000/v1/partner/branch/update-branch/3XSJT \
 Then place order (response: "Order submitted for approval"). Accept/reject:
 ```bash
 # Accept with modifications
-curl -X PATCH http://localhost:3000/v1/partner/order-history/respond/$ORDER_ID \
+curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
   -H "Authorization: Bearer $PARTNER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"accept","modifications":[{"itemId":"<id>","quantity":2}]}'
 
 # Reject
-curl -X PATCH http://localhost:3000/v1/partner/order-history/respond/$ORDER_ID \
+curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
   -H "Authorization: Bearer $PARTNER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"reject","rejectionReason":"Item out of stock"}'
@@ -292,7 +391,7 @@ curl -X PATCH http://localhost:3000/v1/partner/order-history/respond/$ORDER_ID \
 | Order route: `POST /v1/genie/order` with body params | ✅ Use query params: `?cartId=:cartId&dinerId=:dinerId` |
 | Combo order: use `itemId` key | ✅ Use `comboId` key |
 | Place order route: `PUT /v1/genie/order/:orderId` | ✅ Add query param: `?cartId=:cartId` |
-| branchId from token | ✅ Decode JWT: `python3 -c "import base64,json,sys; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)%4); print(json.loads(base64.b64decode(p)))" "$PARTNER_TOKEN"` |
+| branchId from token | ✅ Decode JWT: `echo "$PARTNER_TOKEN" \| cut -d'.' -f2 \| tr '_-' '/+' \| base64 -d 2>/dev/null \| jq .` |
 | munch2 branchId | `3XSJT` |
 | Payment blocked | ✅ Partner must accept/reject all pending orders first |
 | Modifications on reject | ✅ Forbidden — use `rejectionReason` instead |
@@ -331,13 +430,16 @@ restId:    i4fwyk7e
 ### Token Extraction
 
 ```bash
+# Set endpoint (defaults to localhost:3000)
+export BASE=http://localhost:3000
+
 # Partner token
-PARTNER_TOKEN=$(curl -s -X POST http://localhost:3000/v1/partner/auth/signin \
+PARTNER_TOKEN=$(curl -s -X POST $BASE/v1/partner/auth/signin \
   -H "Content-Type: application/json" \
   -d '{"email":"munch@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
 
 # Diner auth
-DINER_RESPONSE=$(curl -s "http://localhost:3000/v1/genie/diner?customDomain=munch2&branchId=3XSJT&fingerprint=grubgenie-stripe-test-002")
+DINER_RESPONSE=$(curl -s "$BASE/v1/genie/diner?customDomain=munch2&branchId=3XSJT&fingerprint=grubgenie-stripe-test-002")
 DINER_TOKEN=$(echo $DINER_RESPONSE | jq -r '.result.accessToken')
 DINER_ID=$(echo $DINER_RESPONSE | jq -r '.result._id')
 ```
