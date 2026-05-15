@@ -149,9 +149,10 @@ bash $SKILL/branch_pos_config.sh disable
 | Field | Value |
 |-------|-------|
 | **appKey** | `xz8swugh0vp9oymdab2tkne1qr5c3i67` |
-| **appSecret** | *(available in live environment)* |
-| **accessToken** | *(available in live environment)* |
+| **appSecret** | `1c54ca0d1f1f84bc9bfec49b9a2efd7852bdef59` |
+| **accessToken** | `c6038984b2ce7e1797f7ddc5b73641e1add36bf4` |
 | **restId** | `i4fwyk7e` |
+| **baseUrl** | `https://qle1yy2ydc.execute-api.ap-southeast-1.amazonaws.com/V1` |
 
 ### Live Petpooja Setup
 

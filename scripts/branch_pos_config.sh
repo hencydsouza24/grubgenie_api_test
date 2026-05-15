@@ -31,10 +31,10 @@ case $ACTION in
         "provider": "petpooja",
         "isEnabled": true,
         "credentials": {
-          "appKey": "TEST_APP_KEY",
-          "appSecret": "TEST_APP_SECRET",
-          "accessToken": "TEST_ACCESS_TOKEN",
-          "restId": "TEST_RESTAURANT_ID"
+          "appKey": "xz8swugh0vp9oymdab2tkne1qr5c3i67",
+          "appSecret": "1c54ca0d1f1f84bc9bfec49b9a2efd7852bdef59",
+          "accessToken": "c6038984b2ce7e1797f7ddc5b73641e1add36bf4",
+          "restId": "i4fwyk7e"
         }
       }' | jq '.'
     ;;

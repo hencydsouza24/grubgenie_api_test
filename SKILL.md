@@ -202,6 +202,7 @@ When a script fails:
 | `order_combo.sh` | Order combo | `bash $SKILL/order_combo.sh [comboId] [qty]` |
 | `flow_dine_in_pay.sh` | Full E2E dine-in + pay | `bash $SKILL/flow_dine_in_pay.sh [itemId] [qty]` |
 | `get_pos_menu.sh` | Fetch POS menu with real IDs | `bash $SKILL/get_pos_menu.sh` |
+| `sync_pos_menu.sh` | Trigger POS menu sync queue job | `bash $SKILL/sync_pos_menu.sh [petpooja]` |
 | `test_pos_validation.sh` | Test POS ID validation | `bash $SKILL/test_pos_validation.sh` |
 | `branch_pos_config.sh` | Petpooja POS config | `bash $SKILL/branch_pos_config.sh [setup\|get\|disable]` |
 | `fetch_menu.sh` | Browse menu | `bash $SKILL/fetch_menu.sh [items\|categories\|restaurant-info]` |
@@ -324,18 +325,67 @@ bash $SKILL/test_pos_validation.sh
 
 This proves validation is working correctly!
 
+#### Step 5: Sync POS Menu into GrubGenie
+
+Trigger a background job that imports the Petpooja menu into GrubGenie:
+
+```bash
+bash $SKILL/sync_pos_menu.sh
+```
+
+Or manually via curl:
+
+```bash
+curl -s -X POST "$BASE/v1/partner/pos/sync-menu" \
+  -H "Authorization: Bearer $PARTNER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"provider":"petpooja"}'
+```
+
+**Response (202 Accepted):**
+```json
+{ "message": "Menu sync started", "result": { "jobId": "..." } }
+```
+
+**Conflict (409):** If sync already running:
+```json
+{ "message": "Menu sync already in progress" }
+```
+
+#### Step 6: Monitor Sync Progress via Socket
+
+The sync job emits progress over the `posMenuImport` socket channel. To check status without a live socket, poll the status endpoint:
+
+```bash
+# Via socket event (emit → receive on same channel)
+# Event name:  posMenuImport
+# Payload to emit:  { customDomain: "munch2", branchId: "3XSJT" }
+# Response shape:
+# { syncing: true,  message: "[pos] Fetching categories..." }
+# { syncing: false, message: "[pos] Menu sync complete", refreshMenuData: true }
+# { syncing: false, message: "[pos] Menu sync failed: ...", refreshMenuData: false }
+```
+
+**Socket channel map (all separate):**
+
+| Channel key | Event name | Purpose |
+|-------------|------------|---------|
+| `menuOcr` | `menuOcr` | OCR upload status |
+| `posMenuImport` | `posMenuImport` | POS sync job progress |
+| `imageGen` | `imageGen` | AI image generation status |
+
 #### Current Limitations
 
-- **Menu is empty**: Petpooja restaurant (i4fwyk7e) has 0 items currently
+- **Menu may be empty**: Petpooja restaurant (i4fwyk7e) has 0 items initially — use sync-menu to import
 - **Structure works**: 33 categories are mapped from Petpooja correctly
-- **To enable full testing**: Add test items to Petpooja via partner portal
 - **Validation enforced**: System rejects invalid POS IDs (correct behavior!)
 
 #### API Endpoints for POS Testing
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /v1/partner/pos/menu?provider=petpooja` | Fetch POS menu with real item IDs |
+| `GET /v1/partner/pos/menu?provider=petpooja` | Fetch raw POS menu with real item IDs |
+| `POST /v1/partner/pos/sync-menu` | Trigger async menu import (body: `{"provider":"petpooja"}`) |
 | `POST /v1/partner/menu` | Create menu item linked to POS |
 | `POST /v1/partner/menu/add-variant/:itemId` | Create variant linked to POS |
 
@@ -397,6 +447,9 @@ curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
 | Modifications on reject | ✅ Forbidden — use `rejectionReason` instead |
 | POS config in branch create/update | ✅ Use dedicated `/v1/partner/branch/pos-config` endpoints |
 | POS creds visible to diners | ✅ Hidden from diner APIs, only partner APIs |
+| Sync-menu returns 404/500 | ✅ POS config not set — run `branch_pos_config.sh setup` first |
+| Sync-menu returns 409 | ✅ Job already running — wait for it to complete or socket to emit `syncing: false` |
+| Socket: listen on combined ocr/pos channel | ✅ Channels are separate: `menuOcr`, `posMenuImport`, `imageGen` |
 | Agent menu route: `/v1/agents/*` | ✅ Use `/v1/agents/menu/*` |
 | Order items field: `items` | ✅ Use `orderDetails` array |
 
@@ -473,4 +526,6 @@ DINER_ID=$(echo $DINER_RESPONSE | jq -r '.result._id')
 ✅ **Order approval/rejection flow** (manual & auto)
 ✅ **Variant selection** (pricing override, validation)
 ✅ **Petpooja POS** (multi-provider ready, credentials hidden)
+✅ **POS menu sync** (`POST /v1/partner/pos/sync-menu` → BullMQ job → socket progress)
+✅ **Separate socket channels** (`menuOcr`, `posMenuImport`, `imageGen`)
 ✅ **Context-mode integration** (batch execute, search, sandbox)
