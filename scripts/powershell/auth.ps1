@@ -6,7 +6,7 @@ $env:BASE = $base
 
 $r = Invoke-RestMethod -Uri "$base/v1/partner/auth/signin" -Method POST `
     -ContentType "application/json" `
-    -Body '{"email":"munch@yopmail.com","password":"Test@123"}'
+    -Body '{"email":"munchuser@yopmail.com","password":"Test@123"}'
 $env:PARTNER_TOKEN = $r.result.accessToken
 
 $t = Invoke-RestMethod -Uri "$base/v1/partner/table" `

@@ -13,7 +13,7 @@ QTY=${2:-2}
 echo "=== Step 1: Partner auth ==="
 PARTNER_TOKEN=$(curl -s -X POST "$BASE/v1/partner/auth/signin" \
   -H "Content-Type: application/json" \
-  -d '{"email":"munch@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
+  -d '{"email":"munchuser@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
 echo "Partner token: ${PARTNER_TOKEN:0:20}..."
 
 echo ""

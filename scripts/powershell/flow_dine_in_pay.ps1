@@ -9,7 +9,7 @@ $base = if ($env:BASE) { $env:BASE } else { "http://localhost:3000" }
 
 Write-Host "=== Step 1: Partner auth ===" -ForegroundColor Yellow
 $r = Invoke-RestMethod -Uri "$base/v1/partner/auth/signin" -Method POST `
-    -ContentType "application/json" -Body '{"email":"munch@yopmail.com","password":"Test@123"}'
+    -ContentType "application/json" -Body '{"email":"munchuser@yopmail.com","password":"Test@123"}'
 $partnerToken = $r.result.accessToken
 Write-Host "Partner: $($partnerToken.Substring(0,20))..."
 

@@ -6,7 +6,7 @@ Base URL: `http://localhost:3000`
 
 | Role | Value |
 |------|-------|
-| Partner email | `munch@yopmail.com` |
+| Partner email | `munchuser@yopmail.com` |
 | Partner password | `Test@123` |
 | Partner customDomain | `munch2` |
 | Partner branchId | `3XSJT` (in JWT payload) |
@@ -30,7 +30,7 @@ Base URL: `http://localhost:3000`
 # Partner login → accessToken
 PARTNER_TOKEN=$(curl -s -X POST http://localhost:3000/v1/partner/auth/signin \
   -H "Content-Type: application/json" \
-  -d '{"email":"munch@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
+  -d '{"email":"munchuser@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
 
 # Diner auth → accessToken + dinerId
 DINER_RESPONSE=$(curl -s "http://localhost:3000/v1/genie/diner?customDomain=munch2&branchId=3XSJT&fingerprint=grubgenie-stripe-test-002")
@@ -203,6 +203,7 @@ python3 -c "import base64,json,sys; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)
 | Method | Route | Auth | Notes |
 |--------|-------|------|-------|
 | POST | `/v1/test/agent-chat/:dinerId` | None | body: `{message}` — test agent directly |
+| POST | `/v1/test/send-sdui-event/:dinerId` | None | body: `{displayContext, componentId, props, trigger}` — fire `sdui-render` socket event to a specific diner (dev-only) |
 | GET | `/v1/genie/recommendation/generate` | Bearer diner | query: `recommendationId` (required) |
 | POST | `/v1/genie/recommendation/generate` | Bearer diner | body: `{hungerLevel,foodType,foodTypeScale,dietaryPreference,dinerCount,time,weather}` — see schema below |
 | GET | `/v1/genie/recommendation/get-by-diner` | Bearer diner | |
@@ -257,6 +258,63 @@ Note: `type` and `timestamp` are NOT valid fields — omit them.
 | POST | `/webhooks/v1/stripe/partner-onboarding` | Stripe partner onboarding webhook |
 | POST | `/webhooks/v1/stripe/subscription` | Stripe subscription webhook |
 | POST | `/webhooks/v1/posthog/posthog-events` | PostHog event ingestion |
+
+### SDUI Test Endpoint
+
+`POST /v1/test/send-sdui-event/:dinerId` — fires an `sdui-render` socket event directly to a connected diner. Dev-only, no auth required.
+
+**Body schema:**
+```json
+{
+  "displayContext": "bottom_sheet | post_add | combo",
+  "componentId": "ItemSpotlight | ComboCard",
+  "props": { ... },
+  "trigger": "menu_end_reached | add_to_cart | ..."
+}
+```
+
+**ItemSpotlight props:**
+```json
+{ "title": "string", "reason": "string", "badge": "string | null" }
+```
+
+**Example — fire ItemSpotlight to a diner:**
+```bash
+eval "$(bash $SKILL/auth.sh)"
+
+curl -s -X POST "$BASE/v1/test/send-sdui-event/$DINER_ID" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayContext": "bottom_sheet",
+    "componentId": "ItemSpotlight",
+    "props": {
+      "title": "Ulli Vada",
+      "reason": "Popular at this time of day",
+      "badge": "Chef'\''s Pick"
+    },
+    "trigger": "menu_end_reached"
+  }' | jq .
+```
+
+**SDUIPayload shape emitted on socket (`sdui-render` event):**
+```json
+{
+  "spec": {
+    "root": "spotlight",
+    "elements": {
+      "spotlight": { "type": "ItemSpotlight", "props": { ... } }
+    }
+  },
+  "trigger": "menu_end_reached",
+  "displayContext": "bottom_sheet",
+  "componentId": "ItemSpotlight",
+  "timestamp": "<ISO 8601>"
+}
+```
+
+**Use with socket-listener:** Run `bash scripts/listen.sh dev` in `grubgenie_agent_prompts/` to watch the `sdui-render` event live.
+
+---
 
 ### Debug / Test Routes
 
@@ -454,7 +512,7 @@ BASE=http://localhost:3000
 # 1. Partner login
 PARTNER_TOKEN=$(curl -s -X POST $BASE/v1/partner/auth/signin \
   -H "Content-Type: application/json" \
-  -d '{"email":"munch@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
+  -d '{"email":"munchuser@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
 echo "Partner token: ${PARTNER_TOKEN:0:20}..."
 
 # 2. Get a table

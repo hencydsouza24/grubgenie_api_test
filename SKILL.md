@@ -137,6 +137,7 @@ bash $SKILL/order_item.sh <itemId> [qty]
 bash $SKILL/order_combo.sh [comboId] [qty]
 bash $SKILL/flow_dine_in_pay.sh         # Full E2E (place → approve → pay)
 bash $SKILL/branch_pos_config.sh [setup|get|disable]
+bash $SKILL/fetch_pos_items.sh [provider]
 bash $SKILL/fetch_menu.sh [command]
 bash $SKILL/agent_test.sh "<message>"
 bash $SKILL/reset_tables.sh
@@ -201,7 +202,8 @@ When a script fails:
 | `order_item.sh` | Order menu item | `bash $SKILL/order_item.sh <itemId> [qty]` |
 | `order_combo.sh` | Order combo | `bash $SKILL/order_combo.sh [comboId] [qty]` |
 | `flow_dine_in_pay.sh` | Full E2E dine-in + pay | `bash $SKILL/flow_dine_in_pay.sh [itemId] [qty]` |
-| `get_pos_menu.sh` | Fetch POS menu with real IDs | `bash $SKILL/get_pos_menu.sh` |
+| `get_pos_menu.sh` | Fetch raw POS menu (categories + items) | `bash $SKILL/get_pos_menu.sh` |
+| `fetch_pos_items.sh` | Fetch POS items with GrubGenie link status | `bash $SKILL/fetch_pos_items.sh [provider]` |
 | `sync_pos_menu.sh` | Trigger POS menu sync queue job | `bash $SKILL/sync_pos_menu.sh [petpooja]` |
 | `test_pos_validation.sh` | Test POS ID validation | `bash $SKILL/test_pos_validation.sh` |
 | `branch_pos_config.sh` | Petpooja POS config | `bash $SKILL/branch_pos_config.sh [setup\|get\|disable]` |
@@ -374,6 +376,120 @@ The sync job emits progress over the `posMenuImport` socket channel. To check st
 | `posMenuImport` | `posMenuImport` | POS sync job progress |
 | `imageGen` | `imageGen` | AI image generation status |
 
+#### Step 7: Simulate Petpooja Order Callback
+
+Petpooja calls this when order status changes. No auth required — Petpooja hits it directly.
+
+```bash
+# Get a real orderNumber from your last placed order first
+ORDER_NUM="your-order-number-here"
+REST_ID="i4fwyk7e"
+
+# Accepted
+curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"1\"}"
+
+# Dispatched
+curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"4\"}"
+
+# Food ready
+curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"5\"}"
+
+# Delivered
+curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"10\"}"
+
+# Cancelled (with reason)
+curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"-1\",\"cancel_reason\":\"Out of stock\"}"
+```
+
+**Status code map:**
+| Status | Meaning |
+|--------|---------|
+| `-1` | Cancelled |
+| `1` / `2` / `3` | Accepted |
+| `4` | Dispatched |
+| `5` | Food Ready |
+| `10` | Delivered |
+
+`orderID` maps to GrubGenie's `orderNumber` field (not `_id`). Check server logs to confirm socket events fired.
+
+#### Step 8: Simulate Item On/Off
+
+Petpooja pushes these when items are toggled unavailable/available in POS.
+
+```bash
+REST_ID="i4fwyk7e"
+
+# Mark item unavailable
+curl -s -X POST "$BASE/webhooks/v1/pos/item_off" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\"}"
+
+# Mark item available
+curl -s -X POST "$BASE/webhooks/v1/pos/item_on" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\"}"
+```
+
+Both return `200 OK` when processed. No auth required.
+
+#### Step 9: Simulate Store Status
+
+```bash
+REST_ID="i4fwyk7e"
+
+# Petpooja queries store status
+curl -s -X POST "$BASE/webhooks/v1/pos/get_store_status" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\"}"
+
+# Petpooja pushes store open/closed update
+curl -s -X POST "$BASE/webhooks/v1/pos/update_store_status" \
+  -H 'Content-Type: application/json' \
+  -d "{\"restID\":\"$REST_ID\"}"
+```
+
+#### Step 10: Test Order Push Flow (GrubGenie → Petpooja)
+
+When an order is placed (or accepted in manual mode), GrubGenie pushes it to Petpooja via BullMQ queue `petpoojaOrderPush`. It runs async — the API returns before push completes.
+
+To verify push happened:
+1. Place an order normally (Workflow 1)
+2. Check server logs for `[petpoojaOrderPush]` entries
+3. The push includes addon/customization mapping — verify addons appear in Petpooja's order
+
+`updatePosOrderStatus` is also wired into order + table controllers — when GrubGenie changes an order status internally (accept/reject/complete), it syncs back to Petpooja.
+
+#### Step 11: Test Duplicate POS ID Validation
+
+As of commit d642ec6, linking the same Petpooja `itemId` or variant `variationId` to a second menu item returns 409.
+
+```bash
+# First link succeeds
+curl -s -X PUT "$BASE/v1/partner/menu/$ITEM_ID_1" \
+  -H "Authorization: Bearer $PARTNER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"pos":{"petpooja":{"itemId":"some-pos-id"}}}'
+
+# Same POS itemId on a different menu item → 409
+curl -s -X PUT "$BASE/v1/partner/menu/$ITEM_ID_2" \
+  -H "Authorization: Bearer $PARTNER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"pos":{"petpooja":{"itemId":"some-pos-id"}}}'
+# Expected: 409 Conflict — POS item ID already linked
+```
+
+Same applies to variant `variationId` in the variants array.
+
 #### Current Limitations
 
 - **Menu may be empty**: Petpooja restaurant (i4fwyk7e) has 0 items initially — use sync-menu to import
@@ -382,12 +498,27 @@ The sync job emits progress over the `posMenuImport` socket channel. To check st
 
 #### API Endpoints for POS Testing
 
+**Partner API (auth required):**
+
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /v1/partner/pos/menu?provider=petpooja` | Fetch raw POS menu with real item IDs |
+| `GET /v1/partner/pos/menu?provider=petpooja` | Fetch raw POS menu (categories + items) |
+| `GET /v1/partner/pos/:provider/items` | Fetch POS items enriched with GrubGenie link status |
 | `POST /v1/partner/pos/sync-menu` | Trigger async menu import (body: `{"provider":"petpooja"}`) |
 | `POST /v1/partner/menu` | Create menu item linked to POS |
+| `PUT /v1/partner/menu/:menuItemId` | Update item POS link (validates no duplicate IDs → 409) |
 | `POST /v1/partner/menu/add-variant/:itemId` | Create variant linked to POS |
+
+**Petpooja Inbound Webhooks (no auth — called by Petpooja):**
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /webhooks/v1/pos/menu_push` | Petpooja pushes full menu → invalidate cache + enqueue sync |
+| `POST /webhooks/v1/pos/get_store_status` | Petpooja queries store open/closed |
+| `POST /webhooks/v1/pos/update_store_status` | Petpooja updates store open/closed |
+| `POST /webhooks/v1/pos/item_off` | Petpooja marks item unavailable |
+| `POST /webhooks/v1/pos/item_on` | Petpooja marks item available |
+| `POST /webhooks/v1/pos/order_callback` | Petpooja sends order status update |
 
 #### POS Configuration (Separate from Testing)
 
@@ -442,7 +573,7 @@ curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
 | Combo order: use `itemId` key | ✅ Use `comboId` key |
 | Place order route: `PUT /v1/genie/order/:orderId` | ✅ Add query param: `?cartId=:cartId` |
 | branchId from token | ✅ Decode JWT: `echo "$PARTNER_TOKEN" \| cut -d'.' -f2 \| tr '_-' '/+' \| base64 -d 2>/dev/null \| jq .` |
-| munch2 branchId | `3XSJT` |
+| munch2 branchId | `D13GZ` |
 | Payment blocked | ✅ Partner must accept/reject all pending orders first |
 | Modifications on reject | ✅ Forbidden — use `rejectionReason` instead |
 | POS config in branch create/update | ✅ Use dedicated `/v1/partner/branch/pos-config` endpoints |
@@ -452,6 +583,9 @@ curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
 | Socket: listen on combined ocr/pos channel | ✅ Channels are separate: `menuOcr`, `posMenuImport`, `imageGen` |
 | Agent menu route: `/v1/agents/*` | ✅ Use `/v1/agents/menu/*` |
 | Order items field: `items` | ✅ Use `orderDetails` array |
+| Webhook auth: send auth header to `/webhooks/v1/pos/*` | ✅ No auth middleware — Petpooja calls these directly, no token needed |
+| Order push is synchronous | ✅ Async via BullMQ `petpoojaOrderPush` — API returns before push completes, check logs |
+| Petpooja `orderID` maps to GrubGenie order `_id` | ✅ Maps to `orderNumber` field, not `_id` |
 
 ---
 
@@ -460,7 +594,7 @@ curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
 ### Test Credentials
 
 ```
-Partner: munch@yopmail.com / Test@123 (branchId: 3XSJT)
+Partner: munchuser@yopmail.com / Test@123 (branchId: 3XSJT)
 Diner:   fingerprint: grubgenie-stripe-test-002
 Admin:   hello@grubgenie.ai / $$grubgod123
 ```
@@ -489,7 +623,7 @@ export BASE=http://localhost:3000
 # Partner token
 PARTNER_TOKEN=$(curl -s -X POST $BASE/v1/partner/auth/signin \
   -H "Content-Type: application/json" \
-  -d '{"email":"munch@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
+  -d '{"email":"munchuser@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
 
 # Diner auth
 DINER_RESPONSE=$(curl -s "$BASE/v1/genie/diner?customDomain=munch2&branchId=3XSJT&fingerprint=grubgenie-stripe-test-002")
@@ -527,5 +661,10 @@ DINER_ID=$(echo $DINER_RESPONSE | jq -r '.result._id')
 ✅ **Variant selection** (pricing override, validation)
 ✅ **Petpooja POS** (multi-provider ready, credentials hidden)
 ✅ **POS menu sync** (`POST /v1/partner/pos/sync-menu` → BullMQ job → socket progress)
+✅ **POS items fetch** (`GET /v1/partner/pos/:provider/items` → enriched with GrubGenie link status)
 ✅ **Separate socket channels** (`menuOcr`, `posMenuImport`, `imageGen`)
 ✅ **Context-mode integration** (batch execute, search, sandbox)
+✅ **Petpooja inbound webhooks** (menu_push, item_on/off, store status, order_callback)
+✅ **Order push to Petpooja** (async via BullMQ `petpoojaOrderPush` queue)
+✅ **updatePosOrderStatus** (wired into order + table controllers — syncs GrubGenie→Petpooja)
+✅ **Duplicate POS ID validation** (409 Conflict when same itemId/variationId linked to 2 items)
