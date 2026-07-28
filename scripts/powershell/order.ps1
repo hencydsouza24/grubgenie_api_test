@@ -24,7 +24,7 @@ else {
 }
 
 $orderId = New-GgOrder -CartId $env:CART_ID -LineKey $lineKey -LineId $lineId -Qty $Qty
-$msg = Submit-GgOrder -CartId $env:CART_ID -OrderId $orderId
-Write-GgInfo "Place result: $msg"
+$place = Submit-GgOrder -CartId $env:CART_ID -OrderId $orderId
+Write-GgInfo "Place result: $($place.Message) (status: $($place.Status))"
 
 Write-Output $orderId

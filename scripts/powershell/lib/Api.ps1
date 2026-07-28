@@ -55,7 +55,12 @@ function New-GgOrder {
     return Get-GgJsonField -Json $resp -Path '.result.currentActiveOrder' -Label 'orderId'
 }
 
-# Submit-GgOrder <cartId> <orderId> → the place-order response message.
+# Submit-GgOrder <cartId> <orderId> → returns @{ Message; Status }.
+#
+# Status is read from the cart response's `.result.orders[] | where _id -eq orderId | orderStatus`
+# — NOT parsed from the message string. Confirmed live against a manual-acceptance branch: the
+# message is the generic "Order placed successfully" REGARDLESS of whether the order needs
+# approval, so a substring match against it can never detect manual mode correctly.
 function Submit-GgOrder {
     param([Parameter(Mandatory)][string]$CartId, [Parameter(Mandatory)][string]$OrderId)
     $base = Get-GgSessionValue -Key 'base'
@@ -63,7 +68,13 @@ function Submit-GgOrder {
 
     $resp = Invoke-GgHttpOrDie -Label 'place order' -Method PUT -Path "$base/v1/genie/order/place-order/$OrderId" `
         -Token $dinerToken -Query @{ cartId = $CartId }
-    return Get-GgJsonMessage -Json $resp
+
+    $message = Get-GgJsonMessage -Json $resp
+    $obj = $resp | ConvertFrom-Json
+    $order = $obj.result.orders | Where-Object { $_._id -eq $OrderId } | Select-Object -First 1
+    $status = if ($order) { $order.orderStatus } else { 'unknown' }
+
+    return @{ Message = $message; Status = $status }
 }
 
 # Set-GgOrderResponse <orderId> accept|reject → partner approves/rejects a manually-accepted

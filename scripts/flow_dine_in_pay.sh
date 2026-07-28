@@ -18,11 +18,13 @@ ORDER_ID="$(gg_order_create "$CART_ID" itemId "$ITEM_ID" "$QTY")" || exit $?
 gg_kv "Order" "$ORDER_ID"
 
 gg_step 3 "Place order"
-PLACE_MSG="$(gg_order_place "$CART_ID" "$ORDER_ID")" || exit $?
-gg_info "$PLACE_MSG"
+PLACE_RESP="$(gg_order_place "$CART_ID" "$ORDER_ID")" || exit $?
+PLACE_MSG="$(gg_json_field "$PLACE_RESP" '.message' "place message")" || exit $?
+PLACE_STATUS="$(gg_json_field "$PLACE_RESP" '.status' "place status")" || exit $?
+gg_info "$PLACE_MSG (status: $PLACE_STATUS)"
 
 gg_step 4 "Accept order if pending approval"
-if echo "$PLACE_MSG" | grep -qi "approval"; then
+if [ "$PLACE_STATUS" = "pending_acceptance" ]; then
   ACCEPT_MSG="$(gg_order_respond "$ORDER_ID" accept)" || exit $?
   gg_info "$ACCEPT_MSG"
 else
