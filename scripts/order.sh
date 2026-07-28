@@ -28,7 +28,9 @@ esac
 QTY="${3:-1}"
 
 ORDER_ID="$(gg_order_create "$CART_ID" "$LINE_KEY" "$LINE_ID" "$QTY")" || exit $?
-MSG="$(gg_order_place "$CART_ID" "$ORDER_ID")" || exit $?
-gg_info "Place result: $MSG"
+PLACE_RESP="$(gg_order_place "$CART_ID" "$ORDER_ID")" || exit $?
+PLACE_MSG="$(gg_json_field "$PLACE_RESP" '.message' "place message")" || exit $?
+PLACE_STATUS="$(gg_json_field "$PLACE_RESP" '.status' "place status")" || exit $?
+gg_info "Place result: $PLACE_MSG (status: $PLACE_STATUS)"
 
 echo "$ORDER_ID"

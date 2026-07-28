@@ -19,11 +19,11 @@ $orderId = New-GgOrder -CartId $cartId -LineKey 'itemId' -LineId $ItemId -Qty $Q
 Write-GgKv -Key 'Order' -Value $orderId
 
 Write-GgStep -Number '3' -Title 'Place order'
-$placeMsg = Submit-GgOrder -CartId $cartId -OrderId $orderId
-Write-GgInfo $placeMsg
+$place = Submit-GgOrder -CartId $cartId -OrderId $orderId
+Write-GgInfo "$($place.Message) (status: $($place.Status))"
 
 Write-GgStep -Number '4' -Title 'Accept order if pending approval'
-if ($placeMsg -match 'approval') {
+if ($place.Status -eq 'pending_acceptance') {
     $acceptMsg = Set-GgOrderResponse -OrderId $orderId -Action 'accept'
     Write-GgInfo $acceptMsg
 }

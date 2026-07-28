@@ -12,7 +12,7 @@ if (-not $env:CART_ID) {
 if (-not $ComboId) { $ComboId = $Script:GgComboSnack }
 
 $orderId = New-GgOrder -CartId $env:CART_ID -LineKey 'comboId' -LineId $ComboId -Qty $Qty
-$msg = Submit-GgOrder -CartId $env:CART_ID -OrderId $orderId
-Write-GgInfo "Place result: $msg"
+$place = Submit-GgOrder -CartId $env:CART_ID -OrderId $orderId
+Write-GgInfo "Place result: $($place.Message) (status: $($place.Status))"
 
 Write-Output $orderId

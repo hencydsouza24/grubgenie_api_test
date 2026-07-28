@@ -13,7 +13,7 @@ if (-not $env:CART_ID) {
 }
 
 $orderId = New-GgOrder -CartId $env:CART_ID -LineKey 'itemId' -LineId $ItemId -Qty $Qty
-$msg = Submit-GgOrder -CartId $env:CART_ID -OrderId $orderId
-Write-GgInfo "Place result: $msg"
+$place = Submit-GgOrder -CartId $env:CART_ID -OrderId $orderId
+Write-GgInfo "Place result: $($place.Message) (status: $($place.Status))"
 
 Write-Output $orderId

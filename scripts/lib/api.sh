@@ -44,16 +44,29 @@ gg_order_create() {
   gg_json_field "$resp" '.result.currentActiveOrder' "orderId"
 }
 
-# gg_order_place <cart_id> <order_id> → prints the place-order response message.
+# gg_order_place <cart_id> <order_id> → prints {"message","status"}.
+#
+# `status` is read from `.result.orders[] | select(._id == order_id) | .orderStatus` — NOT
+# grepped from `.message`. Confirmed live against a manual-acceptance branch: `.message` is the
+# generic string "Order placed successfully" REGARDLESS of whether the order needs approval; a
+# `grep -qi "approval"` against it (the original implementation's check) never matches, so it
+# silently treats every manual-mode order as needing no approval. That went unnoticed as long as
+# the branch under test happened to be in automatic mode — it broke the moment a real
+# manual-mode branch was exercised.
 gg_order_place() {
   local cart_id="$1" order_id="$2"
-  local base diner_token resp
+  local base diner_token resp message status
   base="$(gg_session_get base)" || exit $?
   diner_token="$(gg_session_get dinerToken)" || exit $?
 
   resp="$(gg_http_or_die "place order" PUT "${base}/v1/genie/order/place-order/${order_id}" \
     --token "$diner_token" --query "cartId=${cart_id}")" || exit $?
-  gg_json_message "$resp"
+
+  message="$(gg_json_message "$resp")"
+  status="$(printf '%s' "$resp" | jq -r --arg id "$order_id" \
+    '.result.orders[]? | select(._id == $id) | .orderStatus // empty')"
+
+  jq -n --arg message "$message" --arg status "${status:-unknown}" '{message: $message, status: $status}'
 }
 
 # gg_order_respond <order_id> accept|reject → prints the response message. Requires a partner
