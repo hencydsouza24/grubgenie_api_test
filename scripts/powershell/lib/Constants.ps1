@@ -9,11 +9,16 @@ $Script:GgEnvLocal = 'http://localhost:3000'
 $Script:GgEnvDev   = 'https://dev-backend.grubgenie.ai'
 $Script:GgEnvProd  = 'https://backend.grubgenie.ai'
 
-# Test tenant (munch2). branchId is 3XSJT — the canonical value across docs and every script
-# except the old bash auth.sh, which used D13GZ; that was a bug, not a second real branch.
+# Test tenant (munch2).
 $Script:GgCustomDomain = 'munch2'
-$Script:GgBranchId     = '3XSJT'
 $Script:GgFingerprint  = 'grubgenie-stripe-test-002'
+
+# GgBranchId is NOT used for diner auth — Auth.ps1 decodes the real branchId from the partner
+# token's own JWT claim instead. A partner account can have multiple branches (confirmed live:
+# the test account has 9: 3XSJT, D13GZ, and 7 others) and its "currently selected" branch changes
+# via /v1/partner/branch/switch-branch — a hardcoded literal here would go stale the moment
+# someone switches. Kept only as an example value for docs/reference.
+$Script:GgBranchId     = '3XSJT'
 
 # Partner test credentials — a throwaway mailbox against a shared test tenant. Safe to keep
 # tracked; this is what makes the zero-config happy path possible.
