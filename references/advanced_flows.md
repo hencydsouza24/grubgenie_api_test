@@ -257,82 +257,10 @@ curl -s "http://localhost:3000/v1/partner/order-history/details/$ORDER_ID" \
 
 ## POS Configuration Edge Cases
 
-**STATUS**: ✅ **Fully Tested**
-
-Branch POS config is managed via **dedicated endpoints**, NOT through `add-branch` or `update-branch`.
-
-### Dedicated POS Endpoints
-
-| Method | Route | Permission | Purpose |
-|--------|-------|-----------|---------|
-| GET | `/v1/partner/branch/pos-config` | `getBranchPosConfig` | List POS configs (with credentials) |
-| PUT | `/v1/partner/branch/pos-config` | `upsertBranchPosConfig` | Create/update a provider config |
-| DELETE | `/v1/partner/branch/pos-config/:provider` | `deleteBranchPosConfig` | Remove a provider config |
-
-### Upsert (PUT) Request
-
-```bash
-curl -s -X PUT "http://localhost:3000/v1/partner/branch/pos-config" \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "provider": "petpooja",
-    "isEnabled": true,
-    "credentials": {
-      "appKey": "your_app_key",
-      "appSecret": "your_app_secret",
-      "accessToken": "your_access_token",
-      "restId": "your_restaurant_id"
-    }
-  }' | jq '.message'
-```
-
-### Delete (204 No Content)
-
-```bash
-curl -s -w "\nHTTP %{http_code}\n" -X DELETE \
-  "http://localhost:3000/v1/partner/branch/pos-config/petpooja" \
-  -H "Authorization: Bearer $PARTNER_TOKEN"
-# Returns: HTTP 204 (empty body, idempotent)
-```
-
-### Validation Rules
-
-| Rule | Details |
-|------|---------|
-| provider | Required, valid: `'petpooja'` only |
-| credentials.appKey | Required string |
-| credentials.appSecret | Required string |
-| credentials.accessToken | Required string |
-| credentials.restId | Required string |
-| Upsert | Merges by provider — updating petpooja preserves other providers |
-| Duplicate prevention | Enforced at Joi, Mongoose, and service layers |
-| Security | Credentials hidden from diner APIs via `select: false` on schema |
-
-### Edge Cases
-
-| Scenario | Behavior |
-|----------|----------|
-| Missing required field | 400 validation error |
-| Invalid provider | 400 validation error |
-| DELETE non-existent provider | 204 (idempotent) |
-| Diner calls endpoint | 403 (permission denied) |
-
-### Quick Setup via Script
-
-```bash
-SKILL=/path/to/grubgenie-api-test/scripts
-eval "$(bash $SKILL/auth.sh)"
-
-# Enable POS (uses test credentials from script)
-bash $SKILL/branch_pos_config.sh setup
-
-# View POS config
-bash $SKILL/branch_pos_config.sh get
-
-# Disable POS
-bash $SKILL/branch_pos_config.sh disable
-```
+Branch POS config (endpoints, upsert/delete requests, validation rules, edge cases, and the
+`pos.sh config`/`pos.ps1 config` usage) lives in **`references/petpooja_setup.md`** — this used
+to be duplicated here, in `api_reference.md`, and in `petpooja_setup.md` itself; consolidated to
+one canonical copy to stop the three from drifting apart.
 
 ---
 

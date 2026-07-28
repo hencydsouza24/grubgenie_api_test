@@ -1,22 +1,16 @@
-# Dot-source this to export tokens to current session:
-# . $SKILL\auth.ps1
+# Usage: . ./auth.ps1 [-Force]  (dot-source so the exported vars persist in your session)
+# Authenticates (idempotently — reuses a session younger than GgSessionTtl seconds) and sets
+# $env:BASE, $env:PARTNER_TOKEN, $env:TABLE_ID, $env:DINER_TOKEN, $env:DINER_ID.
+param([switch]$Force)
+. "$PSScriptRoot/lib/Bootstrap.ps1"
 
-$base = if ($env:BASE) { $env:BASE } else { "http://localhost:3000" }
-$env:BASE = $base
+$path = Confirm-GgSession -Force:$Force
+$session = Get-Content $path -Raw | ConvertFrom-Json
 
-$r = Invoke-RestMethod -Uri "$base/v1/partner/auth/signin" -Method POST `
-    -ContentType "application/json" `
-    -Body '{"email":"munchuser@yopmail.com","password":"Test@123"}'
-$env:PARTNER_TOKEN = $r.result.accessToken
-
-$t = Invoke-RestMethod -Uri "$base/v1/partner/table" `
-    -Headers @{ Authorization = "Bearer $env:PARTNER_TOKEN" }
-$env:TABLE_ID = $t.result[0]._id
-
-$d = Invoke-RestMethod -Uri "$base/v1/genie/diner?customDomain=munch2&branchId=3XSJT&fingerprint=grubgenie-stripe-test-002"
-$env:DINER_TOKEN = $d.result.accessToken
-$env:DINER_ID    = $d.result._id
-
-Write-Host "Partner: $($env:PARTNER_TOKEN.Substring(0,20))..." -ForegroundColor Cyan
-Write-Host "Table:   $env:TABLE_ID" -ForegroundColor Cyan
-Write-Host "Diner:   $env:DINER_ID" -ForegroundColor Cyan
+$env:BASE = $session.base
+$env:PARTNER_TOKEN = $session.partnerToken
+$env:TABLE_ID = $session.tableId
+$env:DINER_TOKEN = $session.dinerToken
+$env:DINER_ID = $session.dinerId
+# Confirm-GgSession already prints Partner token/Table/Diner when it performs a fresh auth (see
+# Auth.ps1) — no need to repeat it here.

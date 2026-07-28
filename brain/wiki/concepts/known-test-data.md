@@ -15,7 +15,7 @@ The skill hardcodes a fixed set of test credentials and IDs for the `munch2` ten
 | Partner email / password | `munchuser@yopmail.com` / `Test@123` |
 | Partner branchId | `3XSJT` (in JWT payload) |
 | Diner fingerprint | `grubgenie-stripe-test-002` |
-| Admin email / password | `hello@grubgenie.ai` / `$$grubgod123` |
+| Admin email / password | `hello@grubgenie.ai` / *(rotated 2026-07-29 — see `scripts/config/credentials.example.env`, never commit the real value)* |
 | Petpooja appKey / restId | `xz8swugh0vp9oymdab2tkne1qr5c3i67` / `i4fwyk7e` |
 | Snack Combo item | `69f8757fd475a8cf66ed94f2` (24 AED) |
 | Ulli Vada item | `691bf10018f1d3c34db1db00` (12 AED, no variant) |
@@ -23,16 +23,24 @@ The skill hardcodes a fixed set of test credentials and IDs for the `munch2` ten
 
 ## Why it matters
 
-**Real inconsistency found**: [scripts/auth.sh](../../../scripts/auth.sh) line 15 authenticates the diner with `branchId=D13GZ`, but [scripts/flow_dine_in_pay.sh](../../../scripts/flow_dine_in_pay.sh) line 27 and every documented example use `branchId=3XSJT`. These are presumably different branches under the same `munch2` custom domain — running `auth.sh` and then a script that assumes the `3XSJT` diner (or vice versa) authenticates against the wrong branch context without any error. Worth resolving: either `auth.sh` has a typo, or the two branch IDs are intentionally different test fixtures and that needs documenting explicitly.
+**Resolved 2026-07-29** (was previously a real inconsistency): the old `scripts/auth.sh`
+authenticated the diner with `branchId=D13GZ` while every other script and every documented
+example used `branchId=3XSJT`. `3XSJT` was confirmed canonical — it's now the single source of
+truth in `scripts/lib/constants.sh` (`GG_BRANCH_ID`), and every script reads it from there. There
+is no longer a second branchId literal anywhere in the scripts to drift out of sync.
 
-These are internal-only test values — this page and everything linking to it should stay out of any `public`-profile refresh of this wiki.
+These are internal-only test values — this page and everything linking to it should stay out of
+any `public`-profile refresh of this wiki.
 
 ## Where it lives
 
+- `scripts/lib/constants.sh` — the single source of truth (`GG_BRANCH_ID`, plus every other
+  fixture in this table)
 - `SKILL.md` — onboarding + "Key API Facts" cheat sheet
 - `references/api_reference.md` — "Test Credentials" + "Known Test Data" tables
 - `references/petpooja_setup.md` — Petpooja-specific credentials
-- [scripts/auth.sh](../../../scripts/auth.sh), [scripts/flow_dine_in_pay.sh](../../../scripts/flow_dine_in_pay.sh) — the two conflicting `branchId` literals
+- `scripts/config/credentials.example.env` — the two secrets that are NOT in this table
+  (Petpooja `appSecret`/`accessToken`, admin password) because they must never be committed
 
 ## Related
 

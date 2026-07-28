@@ -1,69 +1,43 @@
+# Full E2E dine-in + pay-in-person flow: auth -> cart -> order -> place -> (approve if needed)
+# -> pay -> confirm. Fully self-contained — auths itself via the shared session (see auth.ps1).
+# Usage: pwsh ./flow_dine_in_pay.ps1 [-ItemId <id>] [-Qty 2]
+# Default item: 691bf10018f1d3c34db1db00 (Ulli Vada, 12 AED)
+# Handles manual orderAcceptanceMode: auto-accepts a pending order before payment.
 param(
-    [string]$ItemId = "691bf10018f1d3c34db1db00",
+    [string]$ItemId,
     [int]$Qty = 2
 )
-# Full E2E dine-in + pay-in-person flow.
-# Usage: . $SKILL\flow_dine_in_pay.ps1 [-ItemId <id>] [-Qty 2]
+. "$PSScriptRoot/lib/Bootstrap.ps1"
+if (-not $ItemId) { $ItemId = $Script:GgItemUlliVada }
 
-$base = if ($env:BASE) { $env:BASE } else { "http://localhost:3000" }
+Write-GgStep -Number '1' -Title 'Create cart'
+$cartId = New-GgCart
+Write-GgKv -Key 'Cart' -Value $cartId
 
-Write-Host "=== Step 1: Partner auth ===" -ForegroundColor Yellow
-$r = Invoke-RestMethod -Uri "$base/v1/partner/auth/signin" -Method POST `
-    -ContentType "application/json" -Body '{"email":"munchuser@yopmail.com","password":"Test@123"}'
-$partnerToken = $r.result.accessToken
-Write-Host "Partner: $($partnerToken.Substring(0,20))..."
+Write-GgStep -Number '2' -Title "Create order (itemId=$ItemId qty=$Qty)"
+$orderId = New-GgOrder -CartId $cartId -LineKey 'itemId' -LineId $ItemId -Qty $Qty
+Write-GgKv -Key 'Order' -Value $orderId
 
-Write-Host "`n=== Step 2: Get table ===" -ForegroundColor Yellow
-$t = Invoke-RestMethod -Uri "$base/v1/partner/table" -Headers @{ Authorization = "Bearer $partnerToken" }
-$tableId = $t.result[0]._id
-Write-Host "Table: $tableId"
+Write-GgStep -Number '3' -Title 'Place order'
+$placeMsg = Submit-GgOrder -CartId $cartId -OrderId $orderId
+Write-GgInfo $placeMsg
 
-Write-Host "`n=== Step 3: Diner auth ===" -ForegroundColor Yellow
-$d = Invoke-RestMethod -Uri "$base/v1/genie/diner?customDomain=munch2&branchId=3XSJT&fingerprint=grubgenie-stripe-test-002"
-$dinerToken = $d.result.accessToken
-$dinerId    = $d.result._id
-Write-Host "Diner: $dinerId"
-
-Write-Host "`n=== Step 4: Create cart ===" -ForegroundColor Yellow
-$c = Invoke-RestMethod -Uri "$base/v1/genie/cart" -Method POST `
-    -ContentType "application/json" -Headers @{ Authorization = "Bearer $dinerToken" } `
-    -Body "{`"tableId`":`"$tableId`"}"
-$cartId = $c.result.cartId
-Write-Host "Cart: $cartId"
-
-Write-Host "`n=== Step 5: Create order (itemId=$ItemId qty=$Qty) ===" -ForegroundColor Yellow
-$o = Invoke-RestMethod -Uri "$base/v1/genie/order?cartId=$cartId&dinerId=$dinerId" -Method POST `
-    -ContentType "application/json" -Headers @{ Authorization = "Bearer $dinerToken" } `
-    -Body "{`"items`":[{`"itemId`":`"$ItemId`",`"quantity`":$Qty}]}"
-$orderId = $o.result.currentActiveOrder
-Write-Host "Order: $orderId"
-
-Write-Host "`n=== Step 6: Place order ===" -ForegroundColor Yellow
-$p = Invoke-RestMethod -Uri "$base/v1/genie/order/place-order/$orderId`?cartId=$cartId" `
-    -Method PUT -Headers @{ Authorization = "Bearer $dinerToken" }
-Write-Host $p.message
-
-Write-Host "`n=== Step 6b: Accept if pending approval ===" -ForegroundColor Yellow
-if ($p.message -match "approval") {
-    $a = Invoke-RestMethod -Uri "$base/v1/partner/order-history/respond/$orderId" -Method PATCH `
-        -ContentType "application/json" -Headers @{ Authorization = "Bearer $partnerToken" } `
-        -Body '{"action":"accept"}'
-    Write-Host $a.message
-} else {
-    Write-Host "No approval needed."
+Write-GgStep -Number '4' -Title 'Accept order if pending approval'
+if ($placeMsg -match 'approval') {
+    $acceptMsg = Set-GgOrderResponse -OrderId $orderId -Action 'accept'
+    Write-GgInfo $acceptMsg
+}
+else {
+    Write-GgInfo 'No approval needed, skipping.'
 }
 
-Write-Host "`n=== Step 7: Pay in person ===" -ForegroundColor Yellow
-$pay = Invoke-RestMethod -Uri "$base/v1/genie/cart/$cartId/payment/pay-in-person" -Method POST `
-    -ContentType "application/json" -Headers @{ Authorization = "Bearer $dinerToken" } `
-    -Body "{`"dinerId`":`"$dinerId`"}"
-Write-Host $pay.message
+Write-GgStep -Number '5' -Title 'Pay in person'
+$payMsg = Invoke-GgPayInPerson -CartId $cartId
+Write-GgInfo $payMsg
 
-Write-Host "`n=== Step 8: Partner confirms payment ===" -ForegroundColor Yellow
-$confirm = Invoke-RestMethod -Uri "$base/v1/partner/order-history/update-payment-status/$cartId" -Method PUT `
-    -ContentType "application/json" -Headers @{ Authorization = "Bearer $partnerToken" } `
-    -Body '{"paymentStatus":"done","paymentMode":"cash","confirmed":true}'
-Write-Host $confirm.message
+Write-GgStep -Number '6' -Title 'Partner confirms payment'
+$confirmMsg = Confirm-GgPayment -CartId $cartId
+Write-GgInfo $confirmMsg
 
-Write-Host "`n=== Done ===" -ForegroundColor Green
-Write-Host "Cart: $cartId | Order: $orderId | Diner: $dinerId"
+Write-GgStep -Number 'done' -Title 'Complete'
+Write-GgInfo "Cart: $cartId | Order: $orderId"

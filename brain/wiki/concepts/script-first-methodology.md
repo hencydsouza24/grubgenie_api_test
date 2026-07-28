@@ -16,10 +16,15 @@ Hand-written curl loses three things the scripts guarantee: correct token extrac
 
 ## Where it lives
 
-- `SKILL.md` — "Core Rules (MUST Follow)" section, Rule 1 and Rule 2
-- Enforced by convention, not tooling — there's no lint/check that blocks manual curl, it's a behavioral instruction to the agent reading `SKILL.md`
+- `SKILL.md` — "Core Rules" section, Rule 1 (script-first) and Rule 3 (context-mode sandbox)
+- **Partially enforced by tooling as of the July 2026 refactor** — `evals/offline/04_conventions.sh`
+  fails the suite if any script that's adopted the shared `lib/` (i.e. sources
+  `lib/bootstrap.sh`/`lib/Bootstrap.ps1`) contains a bare `curl`/`Invoke-WebRequest` call outside
+  `lib/http.sh` itself. It's not a universal lint — a script that hasn't been migrated yet is
+  simply out of the check's scope — but it's no longer purely a behavioral instruction for
+  migrated code.
 
 ## Related
 
-- [Bash Scripts](../modules/scripts-bash.md) — the 14-script surface this rule points at
+- [Bash Scripts](../modules/scripts-bash.md) — the 16-script surface this rule points at
 - [Skill Architecture](../architecture/skill-architecture.md)

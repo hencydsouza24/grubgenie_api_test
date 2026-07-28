@@ -12,7 +12,7 @@ Base URL: `http://localhost:3000`
 | Partner branchId | `3XSJT` (in JWT payload) |
 | Diner fingerprint | `grubgenie-stripe-test-002` |
 | Admin email | `hello@grubgenie.ai` |
-| Admin password | `$$grubgod123` |
+| Admin password | *(ask a teammate — put in `scripts/config/credentials.env`, never commit)* |
 | **Petpooja appKey** | **xz8swugh0vp9oymdab2tkne1qr5c3i67** |
 | **Petpooja restId** | **i4fwyk7e** |
 
@@ -156,7 +156,6 @@ python3 -c "import base64,json,sys; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)
 | Method | Route | Auth | Notes |
 |--------|-------|------|-------|
 | POST | `/v1/admin/auth/signin` | None | body: `{email, password}` |
-| POST | `/v1/admin/auth/signin` | None | body: `{email, password}` |
 | GET | `/v1/admin/config` | Bearer admin | list configs |
 | POST | `/v1/admin/config` | Bearer admin | body: `{name, value}` |
 | GET | `/v1/admin/config/:name` | Bearer admin | single config by name |
@@ -186,6 +185,11 @@ python3 -c "import base64,json,sys; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)
 | PUT | `/v1/admin/migration/:migrationId` | Bearer admin | |
 | DELETE | `/v1/admin/migration/:migrationId` | Bearer admin | |
 | POST | `/v1/admin/onboarding/create-session` | Bearer admin | |
+
+### Platform Routes (admin-gated, but NOT under the `/v1/admin` prefix)
+
+| Method | Route | Auth | Notes |
+|--------|-------|------|-------|
 | GET | `/v1/feature-flags` | Bearer admin | |
 | POST | `/v1/feature-flags` | Bearer admin | body: `{name, enabled, environment:{local,production}}` |
 | GET | `/v1/feature-flags/name/:featureFlagName` | Bearer admin | lookup by name |
@@ -197,6 +201,19 @@ python3 -c "import base64,json,sys; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)
 | GET | `/v1/prompt/:promptId` | Bearer admin | |
 | PUT | `/v1/prompt/:promptId` | Bearer admin | |
 | DELETE | `/v1/prompt/:promptId` | Bearer admin | |
+
+### POS Routes (Petpooja — see pos.sh / pos.ps1)
+
+| Method | Route | Auth | Notes |
+|--------|-------|------|-------|
+| GET | `/v1/partner/pos/menu` | Bearer partner | query: `provider` — fetch raw POS menu (categories + items) |
+| GET | `/v1/partner/pos/:provider/items` | Bearer partner | POS items enriched with GrubGenie link status |
+| POST | `/v1/partner/pos/sync-menu` | Bearer partner | body: `{provider}` — trigger async menu import; 202 enqueued, 409 already running |
+| GET | `/v1/partner/branch/pos-config` | Bearer partner | list POS provider configs (with credentials) |
+| PUT | `/v1/partner/branch/pos-config` | Bearer partner | upsert provider config; body: `{provider, isEnabled, credentials:{...}}` |
+| DELETE | `/v1/partner/branch/pos-config/:provider` | Bearer partner | remove provider config; 204 |
+| POST | `/v1/partner/menu` | Bearer partner | create menu item; body may include `pos.petpooja.itemId` — validates no duplicate POS links (409) |
+| POST | `/v1/partner/menu/add-variant/:itemId` | Bearer partner | create variant; may include `pos.petpooja.variationId` |
 
 ### Agent / Recommendation Routes
 
@@ -250,14 +267,24 @@ Note: `type` and `timestamp` are NOT valid fields — omit them.
 |--------|-------|------|-------|
 | POST | `/v1/analytics/track` | None | body: `{event, properties, userId}` |
 
-### Webhook Routes (inbound, not for manual testing)
+### Webhook Routes (inbound)
 
-| Method | Route | Notes |
-|--------|-------|-------|
-| POST | `/webhooks/v1/stripe/diner-payment` | Stripe diner payment webhook |
-| POST | `/webhooks/v1/stripe/partner-onboarding` | Stripe partner onboarding webhook |
-| POST | `/webhooks/v1/stripe/subscription` | Stripe subscription webhook |
-| POST | `/webhooks/v1/posthog/posthog-events` | PostHog event ingestion |
+Stripe and PostHog webhooks are signature-verified — not practically testable by hand. The
+Petpooja POS webhooks have **no auth middleware at all** (Petpooja calls them directly) and ARE
+manually testable; see SKILL.md's POS webhook simulation section for full request examples.
+
+| Method | Route | Auth | Notes |
+|--------|-------|------|-------|
+| POST | `/webhooks/v1/stripe/diner-payment` | Signature | Stripe diner payment webhook |
+| POST | `/webhooks/v1/stripe/partner-onboarding` | Signature | Stripe partner onboarding webhook |
+| POST | `/webhooks/v1/stripe/subscription` | Signature | Stripe subscription webhook |
+| POST | `/webhooks/v1/posthog/posthog-events` | Signature | PostHog event ingestion |
+| POST | `/webhooks/v1/pos/menu_push` | **None** | Petpooja pushes full menu → invalidate cache + enqueue sync |
+| POST | `/webhooks/v1/pos/get_store_status` | **None** | Petpooja queries store open/closed |
+| POST | `/webhooks/v1/pos/update_store_status` | **None** | Petpooja updates store open/closed |
+| POST | `/webhooks/v1/pos/item_off` | **None** | Petpooja marks item unavailable |
+| POST | `/webhooks/v1/pos/item_on` | **None** | Petpooja marks item available |
+| POST | `/webhooks/v1/pos/order_callback` | **None** | Petpooja sends order status update; `orderID` maps to `orderNumber`, not `_id` |
 
 ### SDUI Test Endpoint
 
@@ -476,7 +503,13 @@ curl -s -w "\nHTTP %{http_code}" -X DELETE \
 - **branchId location**: In JWT payload, not in login response body. Decode with python3 snippet above.
 - **Diner branchId**: Same as partner branchId for that tenant — `3XSJT` for munch2 tenant.
 - **Cart status flow**: `open` → `payment_in_progress` → `payment_done` (Stripe) or direct → `payment_done` (pay-in-person).
-- **Order status flow**: `pending` → `placed` (after place-order) → `pending_acceptance` (after partner responds, if accepted) → `preparing` → `ready` → `completed`. Rejected orders land in `rejected` status.
+- **Order status flow (canonical — SKILL.md and advanced_flows.md reference this, not restate it)**:
+  `pending` → `placed` (place-order call). If branch `orderAcceptanceMode` is `manual`, the order
+  enters `pending_acceptance` **immediately on place-order, before the partner responds** — not
+  after. The partner's accept/reject decision is what moves it OUT of `pending_acceptance`, into
+  `preparing` → `ready` → `completed`, or into `rejected`. If `orderAcceptanceMode` is
+  `automatic` (the default), placed orders skip `pending_acceptance` entirely and go straight to
+  `preparing`.
 - **Payment blocked**: All payment routes (`payment/initiate`, `pay-in-person`, `splits/*`) throw 400 if any order in the cart has status `pending_acceptance`. Partner must respond to all pending orders first.
 - **Order history visibility**: `getOrderHistory` and `getDinerOrderHistory` now include `pending_acceptance` and `rejected` orders (previously filtered out).
 

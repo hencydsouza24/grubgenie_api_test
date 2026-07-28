@@ -1,157 +1,92 @@
 ---
 name: grubgenie-api-test
 description: |
-  GrubGenie API testing skill. Provides ready-to-run helper scripts and curl commands for all
-  GrubGenie API flows. Supports local (localhost:3000), dev (dev-backend.grubgenie.ai), and
-  prod (backend.grubgenie.ai) environments via selectable env.sh / env.ps1. Works on macOS,
-  Linux, Windows (Git Bash), and Windows (PowerShell). Includes test credentials, token
-  extraction patterns, and complete E2E flows (dine-in, pay-in-person, Stripe payment, partner
-  management, admin, agent testing, combo ordering, order approval/rejection). Use when testing
-  GrubGenie APIs, verifying new features, debugging endpoint behavior, walking through the
-  diner/partner/admin flows interactively, or reproducing auth/permission bugs.
-allowed-tools: "Bash(python:*) Bash(npm:*) Bash(bash:*) WebFetch mcp__plugin_context-mode_context-mode__ctx_execute mcp__plugin_context-mode_context-mode__ctx_search mcp__plugin_context-mode_context-mode__ctx_batch_execute"
+  GrubGenie API testing skill. Provides ready-to-run helper scripts (bash + PowerShell, full
+  parity) for all GrubGenie API flows. Supports local (localhost:3000), dev
+  (dev-backend.grubgenie.ai), and prod (backend.grubgenie.ai) environments via env.sh / env.ps1.
+  Works on macOS, Linux, Windows (Git Bash), and Windows (PowerShell). Includes test credentials,
+  a shared session model, and complete E2E flows (dine-in, pay-in-person, Stripe payment, partner
+  management, admin, agent testing, combo ordering, order approval/rejection, Petpooja POS sync
+  and webhook simulation). Use when testing GrubGenie APIs, verifying new features, debugging
+  endpoint behavior, walking through the diner/partner/admin flows interactively, or reproducing
+  auth/permission bugs.
+allowed-tools: "Bash(python:*) Bash(npm:*) Bash(bash:*) Bash(pwsh:*) WebFetch mcp__plugin_context-mode_context-mode__ctx_execute mcp__plugin_context-mode_context-mode__ctx_search mcp__plugin_context-mode_context-mode__ctx_batch_execute"
 ---
 
 # GrubGenie API Test Skill
 
-## Onboarding (First Time Setup)
-
-### macOS / Linux
-
-**Step 1 — Install dependencies:**
-```bash
-# macOS
-brew install jq
-
-# Ubuntu/Debian
-sudo apt-get install -y jq curl
-```
-
-**Step 2 — Set your skill path:**
-```bash
-export SKILL=~/.claude/skills/grubgenie-api-test/scripts
-```
-
-**Step 3 — Pick environment, authenticate, test:**
-```bash
-eval "$(bash $SKILL/env.sh local)"   # http://localhost:3000
-eval "$(bash $SKILL/env.sh dev)"     # https://dev-backend.grubgenie.ai
-eval "$(bash $SKILL/env.sh prod)"    # https://backend.grubgenie.ai
-
-eval "$(bash $SKILL/auth.sh)"
-bash $SKILL/fetch_menu.sh restaurant-info
-```
-
----
-
-### Windows — Option A: PowerShell (recommended)
-
-No extra dependencies — PowerShell ships with `Invoke-RestMethod` (JSON-native).
-
-**Step 1 — Set your skill path:**
-```powershell
-$SKILL = "$HOME\.claude\skills\grubgenie-api-test\scripts\powershell"
-```
-
-**Step 2 — Pick environment, authenticate, test:**
-```powershell
-. $SKILL\env.ps1 local    # http://localhost:3000
-. $SKILL\env.ps1 dev      # https://dev-backend.grubgenie.ai
-. $SKILL\env.ps1 prod     # https://backend.grubgenie.ai
-
-. $SKILL\auth.ps1
-```
-
-**Full E2E dine-in flow:**
-```powershell
-. $SKILL\flow_dine_in_pay.ps1 -ItemId 691bf10018f1d3c34db1db00 -Qty 2
-```
-
-**Step by step:**
-```powershell
-. $SKILL\auth.ps1
-. $SKILL\create_cart.ps1
-. $SKILL\order_item.ps1 -ItemId 691bf10018f1d3c34db1db00 -Qty 2
-```
-
----
-
-### Windows — Option B: Git Bash
-
-Requires bash + curl + jq.
-
-1. Install **Git for Windows**: https://git-scm.com/download/win
-2. Install **jq**:
-   - Download `jq-windows-amd64.exe` from https://github.com/jqlang/jq/releases
-   - Rename to `jq.exe`, place in `C:\Program Files\Git\usr\bin\`
-3. Open **Git Bash**
-4. Run scripts exactly like macOS/Linux:
-```bash
-export SKILL="$HOME/.claude/skills/grubgenie-api-test/scripts"
-eval "$(bash $SKILL/env.sh dev)"
-eval "$(bash $SKILL/auth.sh)"
-bash $SKILL/fetch_menu.sh restaurant-info
-```
-
----
+Ready-to-run bash + PowerShell scripts for every GrubGenie API flow — auth, cart, orders,
+payments, menu browsing, Petpooja POS, admin, and the AI agent chat endpoint. Both languages
+share the same architecture (`scripts/lib/` / `scripts/powershell/lib/`) and produce identical
+exit codes and output shapes — see `references/setup.md` for the full per-OS onboarding walkthrough.
 
 ## Quick Start
 
-All helper scripts live in `scripts/`. Choose your environment with `env.sh` before auth.
+```bash
+SKILL=~/.claude/skills/grubgenie-api-test/scripts
+
+eval "$(bash $SKILL/env.sh local)"   # local | dev | prod
+eval "$(bash $SKILL/auth.sh)"        # idempotent — reuses a session under 15 min old
+
+# Full E2E in one command
+bash $SKILL/flow_dine_in_pay.sh 691bf10018f1d3c34db1db00 2
+```
+
+```powershell
+$SKILL = "$HOME\.claude\skills\grubgenie-api-test\scripts\powershell"
+
+. $SKILL\env.ps1 -Env local
+. $SKILL\auth.ps1
+
+pwsh -File $SKILL\flow_dine_in_pay.ps1 -ItemId 691bf10018f1d3c34db1db00 -Qty 2
+```
+
+First time on this machine? Read **[Onboarding](./references/setup.md)** — dependency install per
+OS, PowerShell notes, Git Bash setup on Windows.
+
+## Core Rules
+
+### 1. Script-first — never write curl/Invoke-RestMethod by hand
+
+Every operation has a script. Use it:
 
 ```bash
-SKILL=/path/to/grubgenie-api-test/scripts
-
-# Step 1: Set environment (local | dev | prod)
-eval "$(bash $SKILL/env.sh local)"
-
-# Step 2: Authenticate (sets PARTNER_TOKEN, DINER_TOKEN, DINER_ID, TABLE_ID, BASE)
 eval "$(bash $SKILL/auth.sh)"
-
-# Step 2: Create a cart
 export CART_ID=$(bash $SKILL/create_cart.sh)
-
-# Step 3: Order items and run E2E
-bash $SKILL/order_item.sh 691bf10018f1d3c34db1db00 2          # Order Ulli Vada x2
-bash $SKILL/flow_dine_in_pay.sh                              # Complete: place → accept → pay
-```
-
-**Full E2E in one command:**
-```bash
-bash $SKILL/flow_dine_in_pay.sh [itemId] [qty]
-```
-
----
-
-## Core Rules (MUST Follow)
-
-### Rule 1: Script-First Methodology
-
-**Every operation has a pre-built script. Use it. Never write curl manually.**
-
-For all standard operations:
-```bash
-eval "$(bash $SKILL/auth.sh)"           # All users + tokens
-export CART_ID=$(bash $SKILL/create_cart.sh)
-bash $SKILL/order_item.sh <itemId> [qty]
-bash $SKILL/order_combo.sh [comboId] [qty]
-bash $SKILL/flow_dine_in_pay.sh         # Full E2E (place → approve → pay)
-bash $SKILL/branch_pos_config.sh [setup|get|disable]
-bash $SKILL/fetch_pos_items.sh [provider]
+bash $SKILL/order.sh item <itemId> [qty]         # or: order.sh combo [comboId] [qty]
+bash $SKILL/flow_dine_in_pay.sh                  # full E2E: place → approve → pay → confirm
+bash $SKILL/pos.sh menu|items|sync|config|validate
 bash $SKILL/fetch_menu.sh [command]
 bash $SKILL/agent_test.sh "<message>"
 bash $SKILL/reset_tables.sh
 ```
 
-**Why:**
-- Correct token extraction and variable handling
-- Consistent request formatting across all flows
-- Proper error handling and retries
-- Testability and debuggability
+Scripts handle token extraction, request formatting, and error handling correctly — hand-rolled
+curl reliably gets one of those wrong (see `references/api_reference.md` "Key Business Rules"
+for the mistakes this actually catches).
 
-### Rule 2: Non-Standard Operations → Context-Mode Sandbox
+### 2. Exit codes are the contract — check them
 
-If no script exists for your operation, **do NOT write curl manually**. Use context-mode:
+Every script (both languages) uses the same exit-code scheme, whether it succeeds or fails:
+
+| Code | Meaning |
+|---|---|
+| `0` | success |
+| `2` | usage error — bad argument, missing required value |
+| `4` | unexpected 4xx from the API |
+| `5` | unexpected 5xx from the API |
+| `6` | response didn't have the field a script needed (contract violation, not an HTTP error) |
+| `7` | unreachable — DNS/connection-refused/timeout |
+
+In bash, a script that calls another script's functions internally already handles this — but if
+you write a new one-off check, use `if cmd; then ... else ... fi` or `cmd || rc=$?`, not a bare
+call. `set -e` does not reliably propagate through a failing `${VAR:?msg}` or nested
+`$(command substitution)` — see `scripts/lib/log.sh`'s `gg_require` for the safe pattern.
+
+### 3. Non-standard operations → context-mode sandbox, not raw curl
+
+If no script covers what you need, use context-mode rather than hand-writing curl — output stays
+out of your context window and you still get correct auth via `auth.sh`:
 
 ```bash
 mcp_context_mode_ctx_execute(
@@ -160,511 +95,166 @@ mcp_context_mode_ctx_execute(
     SKILL=/path/to/grubgenie-api-test/scripts
     eval "$(bash $SKILL/auth.sh 2>/dev/null)"
     curl -s -X PATCH "$BASE/v1/partner/order-history/respond/ORDER_ID" \\
-      -H "Authorization: Bearer $PARTNER_TOKEN" \\
-      -H 'Content-Type: application/json' \\
+      -H "Authorization: Bearer $PARTNER_TOKEN" -H 'Content-Type: application/json' \\
       -d '{"action":"accept","modifications":[{"itemId":"<id>","quantity":2}]}'
   """
 )
 ```
 
-**Benefits:**
-- HTTP calls don't flood context (output captured in sandbox)
-- Proper token handling via auth.sh
-- Response data searchable via context-mode search
+### 4. 401 → re-auth; anything else → check Key API Facts below
 
-### Rule 3: Token Expiry → Re-auth
-
-If you get 401, tokens expired. Re-run:
 ```bash
-eval "$(bash $SKILL/auth.sh)"
+eval "$(bash $SKILL/auth.sh --force)"   # --force skips the session-freshness check
 ```
 
-### Rule 4: Error Handling
+## Script Inventory
 
-When a script fails:
-1. Re-run auth: `eval "$(bash $SKILL/auth.sh)"`
-2. Check server logs
-3. Refer to "Key API Facts" section (below) and "Debugging Tips" in references
-
----
-
-## Helper Scripts Reference
-
-### Script Inventory
-
-**Bash (macOS / Linux / Git Bash on Windows):**
+Every script exists in both `scripts/*.sh` and `scripts/powershell/*.ps1` — same name, same
+behavior, same exit codes. `order_item`/`order_combo`/`get_pos_menu`/`fetch_pos_items`/
+`sync_pos_menu`/`branch_pos_config`/`test_pos_validation` are back-compat shims over `order`/`pos`
+(kept because docs and muscle memory reference them by name).
 
 | Script | Purpose | Usage |
-|--------|---------|-------|
-| `env.sh` | Select target environment | `eval "$(bash $SKILL/env.sh [local\|dev\|prod])"` |
-| `auth.sh` | Partner + diner auth, first table | `eval "$(bash $SKILL/auth.sh)"` |
-| `create_cart.sh` | Create cart for session | `export CART_ID=$(bash $SKILL/create_cart.sh)` |
-| `order_item.sh` | Order menu item | `bash $SKILL/order_item.sh <itemId> [qty]` |
-| `order_combo.sh` | Order combo | `bash $SKILL/order_combo.sh [comboId] [qty]` |
-| `flow_dine_in_pay.sh` | Full E2E dine-in + pay | `bash $SKILL/flow_dine_in_pay.sh [itemId] [qty]` |
-| `get_pos_menu.sh` | Fetch raw POS menu (categories + items) | `bash $SKILL/get_pos_menu.sh` |
-| `fetch_pos_items.sh` | Fetch POS items with GrubGenie link status | `bash $SKILL/fetch_pos_items.sh [provider]` |
-| `sync_pos_menu.sh` | Trigger POS menu sync queue job | `bash $SKILL/sync_pos_menu.sh [petpooja]` |
-| `test_pos_validation.sh` | Test POS ID validation | `bash $SKILL/test_pos_validation.sh` |
-| `branch_pos_config.sh` | Petpooja POS config | `bash $SKILL/branch_pos_config.sh [setup\|get\|disable]` |
-| `fetch_menu.sh` | Browse menu | `bash $SKILL/fetch_menu.sh [items\|categories\|restaurant-info]` |
-| `agent_test.sh` | Agent chat | `bash $SKILL/agent_test.sh "<message>" [dinerId]` |
-| `reset_tables.sh` | Reset all tables | `bash $SKILL/reset_tables.sh` |
+|---|---|---|
+| `env` | Select environment | `eval "$(bash $SKILL/env.sh local\|dev\|prod)"` |
+| `auth` | Partner + diner auth (idempotent) | `eval "$(bash $SKILL/auth.sh [--force])"` |
+| `create_cart` | Create cart for the session's table | `export CART_ID=$(bash $SKILL/create_cart.sh)` |
+| `order` | Order an item or combo, then place it | `bash $SKILL/order.sh item\|combo <id> [qty]` |
+| `flow_dine_in_pay` | Full E2E: cart → order → place → approve → pay → confirm | `bash $SKILL/flow_dine_in_pay.sh [itemId] [qty]` |
+| `fetch_menu` | Browse items/categories/combos/offers/etc (17 subcommands) | `bash $SKILL/fetch_menu.sh [command] [arg]` |
+| `pos` | Petpooja POS: menu, items, sync, config, validate | `bash $SKILL/pos.sh menu\|items\|sync\|config\|validate` |
+| `agent_test` | Chat with the AI agent (unauthenticated) | `bash $SKILL/agent_test.sh "<message>" [dinerId]` |
+| `reset_tables` | Reset all tables to available | `bash $SKILL/reset_tables.sh` |
 
-**PowerShell (Windows — dot-source with `. script.ps1`):**
-
-| Script | Purpose | Usage |
-|--------|---------|-------|
-| `powershell\env.ps1` | Select target environment | `. $SKILL\env.ps1 [local\|dev\|prod]` |
-| `powershell\auth.ps1` | Partner + diner auth, first table | `. $SKILL\auth.ps1` |
-| `powershell\create_cart.ps1` | Create cart for session | `. $SKILL\create_cart.ps1` |
-| `powershell\order_item.ps1` | Order menu item | `. $SKILL\order_item.ps1 -ItemId <id> [-Qty 2]` |
-| `powershell\flow_dine_in_pay.ps1` | Full E2E dine-in + pay | `. $SKILL\flow_dine_in_pay.ps1 [-ItemId <id>] [-Qty 2]` |
-
-### Script Dependencies
-
-Scripts assume these environment variables (set by `auth.sh`):
-- `PARTNER_TOKEN` — partner bearer token
-- `DINER_TOKEN` — diner bearer token
-- `DINER_ID` — diner ObjectId
-- `TABLE_ID` — table id
-- `BASE` — `http://localhost:3000`
-
-For ordering scripts (`order_item.sh`, `order_combo.sh`), also set:
-```bash
-export CART_ID=<from create_cart.sh>
-```
-
----
+`create_cart`, `order`, and `flow_dine_in_pay` auth themselves automatically if no session
+exists yet — you don't strictly need to run `auth` first, but it's useful to see the tokens.
 
 ## Common Workflows
 
-### Workflow 1: Basic Order (Dine-In, Pay-In-Person)
+### Basic order (dine-in, pay-in-person)
 
 ```bash
-SKILL=/path/to/grubgenie-api-test/scripts
-
-# 1. Auth
 eval "$(bash $SKILL/auth.sh)"
-
-# 2. Create cart
 export CART_ID=$(bash $SKILL/create_cart.sh)
-
-# 3. Add items
-bash $SKILL/order_item.sh 691bf10018f1d3c34db1db00 2
-
-# 4. Place order
+bash $SKILL/order.sh item 691bf10018f1d3c34db1db00 2
 bash $SKILL/flow_dine_in_pay.sh
 ```
 
-### Workflow 2: Menu Exploration
+### Menu exploration
 
 ```bash
-bash $SKILL/fetch_menu.sh items              # List all items
-bash $SKILL/fetch_menu.sh categories         # List categories
-bash $SKILL/fetch_menu.sh restaurant-info    # Get restaurant details
-bash $SKILL/fetch_menu.sh search pizza       # Search
+bash $SKILL/fetch_menu.sh items                # all items
+bash $SKILL/fetch_menu.sh categories
+bash $SKILL/fetch_menu.sh restaurant-info
+bash $SKILL/fetch_menu.sh items-search "vada"
 ```
 
-### Workflow 3: POS Integration Testing (Petpooja)
+### Petpooja POS integration testing
 
-#### IMPORTANT: Always Use Real POS Menu IDs
-
-Never use dummy or hardcoded item IDs when testing POS integration. Always fetch the POS menu first to get real item IDs from Petpooja.
-
-#### Step 1: Fetch POS Menu Structure
+**Always use real POS menu IDs** — never hardcode dummy item IDs when testing POS integration.
 
 ```bash
-bash $SKILL/get_pos_menu.sh
+bash $SKILL/pos.sh menu                        # raw POS menu structure
+ITEM_ID=$(bash $SKILL/pos.sh items | jq -r '.result[0].itemid')
+
+bash $SKILL/pos.sh validate                    # confirms invalid POS itemId/variationId → 400
+                                                # (one request per case — not two; see Rule 2)
+bash $SKILL/pos.sh sync                        # trigger async menu import (202 or 409, both OK)
+bash $SKILL/pos.sh config setup|get|disable    # requires scripts/config/credentials.env — see
+                                                # references/petpooja_setup.md
 ```
 
-**What it returns:**
-- 33 categories from Petpooja
-- Item list for each category (currently empty - 0 items)
-- Variation IDs for each item (when available)
+Duplicate POS ID linking is rejected with 409 — linking the same Petpooja `itemId` or variant
+`variationId` to a second menu item fails, same rule for `variationId` in the `variants` array.
 
-#### Step 2: Extract Real Item ID
+**Sync progress** is emitted over the `posMenuImport` socket channel (separate from `menuOcr` and
+`imageGen` — a common mistake is listening on a combined channel):
 
-Once Petpooja restaurant has items in the menu:
+```
+Emit: { customDomain: "munch2", branchId: "3XSJT" } on posMenuImport
+Receive: { syncing: true,  message: "[pos] Fetching categories..." }
+         { syncing: false, message: "[pos] Menu sync complete", refreshMenuData: true }
+```
+
+**Petpooja inbound webhooks** have no auth middleware — Petpooja calls these directly, no token
+needed. Useful for simulating POS-side events without a live Petpooja sandbox:
 
 ```bash
-ITEM_ID=$(bash $SKILL/get_pos_menu.sh | jq '.categories[0].items[0].itemid' -r)
-echo "Using POS item: $ITEM_ID"
-```
-
-#### Step 3: Create Menu Item with POS Link
-
-```bash
-curl -s -X POST "$BASE/v1/partner/menu" \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "Samosa",
-    "oPrice": 50,
-    "pos": {
-      "petpooja": {
-        "itemId": "'$ITEM_ID'"
-      }
-    }
-  }'
-```
-
-#### Step 4: Verify POS Validation
-
-Test that invalid IDs are properly rejected:
-
-```bash
-bash $SKILL/test_pos_validation.sh
-```
-
-**Expected output:**
-```json
-{
-  "status": 400,
-  "message": "POS item not found"
-}
-```
-
-This proves validation is working correctly!
-
-#### Step 5: Sync POS Menu into GrubGenie
-
-Trigger a background job that imports the Petpooja menu into GrubGenie:
-
-```bash
-bash $SKILL/sync_pos_menu.sh
-```
-
-Or manually via curl:
-
-```bash
-curl -s -X POST "$BASE/v1/partner/pos/sync-menu" \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"provider":"petpooja"}'
-```
-
-**Response (202 Accepted):**
-```json
-{ "message": "Menu sync started", "result": { "jobId": "..." } }
-```
-
-**Conflict (409):** If sync already running:
-```json
-{ "message": "Menu sync already in progress" }
-```
-
-#### Step 6: Monitor Sync Progress via Socket
-
-The sync job emits progress over the `posMenuImport` socket channel. To check status without a live socket, poll the status endpoint:
-
-```bash
-# Via socket event (emit → receive on same channel)
-# Event name:  posMenuImport
-# Payload to emit:  { customDomain: "munch2", branchId: "3XSJT" }
-# Response shape:
-# { syncing: true,  message: "[pos] Fetching categories..." }
-# { syncing: false, message: "[pos] Menu sync complete", refreshMenuData: true }
-# { syncing: false, message: "[pos] Menu sync failed: ...", refreshMenuData: false }
-```
-
-**Socket channel map (all separate):**
-
-| Channel key | Event name | Purpose |
-|-------------|------------|---------|
-| `menuOcr` | `menuOcr` | OCR upload status |
-| `posMenuImport` | `posMenuImport` | POS sync job progress |
-| `imageGen` | `imageGen` | AI image generation status |
-
-#### Step 7: Simulate Petpooja Order Callback
-
-Petpooja calls this when order status changes. No auth required — Petpooja hits it directly.
-
-```bash
-# Get a real orderNumber from your last placed order first
-ORDER_NUM="your-order-number-here"
 REST_ID="i4fwyk7e"
+ORDER_NUM="your-order-number-here"   # GrubGenie orderNumber, NOT the order's _id
 
-# Accepted
-curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"1\"}"
-
-# Dispatched
-curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"4\"}"
-
-# Food ready
-curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
-  -H 'Content-Type: application/json' \
+# Order status callback — status: -1 cancelled, 1/2/3 accepted, 4 dispatched, 5 food ready, 10 delivered
+curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" -H 'Content-Type: application/json' \
   -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"5\"}"
 
-# Delivered
-curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"10\"}"
+# Item availability toggle
+curl -s -X POST "$BASE/webhooks/v1/pos/item_off" -H 'Content-Type: application/json' -d "{\"restID\":\"$REST_ID\"}"
+curl -s -X POST "$BASE/webhooks/v1/pos/item_on"  -H 'Content-Type: application/json' -d "{\"restID\":\"$REST_ID\"}"
 
-# Cancelled (with reason)
-curl -s -X POST "$BASE/webhooks/v1/pos/order_callback" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\",\"orderID\":\"$ORDER_NUM\",\"status\":\"-1\",\"cancel_reason\":\"Out of stock\"}"
+# Store open/closed
+curl -s -X POST "$BASE/webhooks/v1/pos/get_store_status"    -H 'Content-Type: application/json' -d "{\"restID\":\"$REST_ID\"}"
+curl -s -X POST "$BASE/webhooks/v1/pos/update_store_status" -H 'Content-Type: application/json' -d "{\"restID\":\"$REST_ID\"}"
 ```
 
-**Status code map:**
-| Status | Meaning |
-|--------|---------|
-| `-1` | Cancelled |
-| `1` / `2` / `3` | Accepted |
-| `4` | Dispatched |
-| `5` | Food Ready |
-| `10` | Delivered |
+Full endpoint list, request/response shapes, and validation rules: `references/api_reference.md`
+("POS Routes" + "Webhook Routes"). Credential setup: `references/petpooja_setup.md`.
 
-`orderID` maps to GrubGenie's `orderNumber` field (not `_id`). Check server logs to confirm socket events fired.
+**Order push (GrubGenie → Petpooja)** happens async via BullMQ queue `petpoojaOrderPush` when an
+order is placed/accepted — the API returns before the push completes; check server logs for
+`[petpoojaOrderPush]` entries to confirm it fired.
 
-#### Step 8: Simulate Item On/Off
-
-Petpooja pushes these when items are toggled unavailable/available in POS.
+### Order approval/rejection (manual acceptance mode)
 
 ```bash
-REST_ID="i4fwyk7e"
-
-# Mark item unavailable
-curl -s -X POST "$BASE/webhooks/v1/pos/item_off" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\"}"
-
-# Mark item available
-curl -s -X POST "$BASE/webhooks/v1/pos/item_on" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\"}"
-```
-
-Both return `200 OK` when processed. No auth required.
-
-#### Step 9: Simulate Store Status
-
-```bash
-REST_ID="i4fwyk7e"
-
-# Petpooja queries store status
-curl -s -X POST "$BASE/webhooks/v1/pos/get_store_status" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\"}"
-
-# Petpooja pushes store open/closed update
-curl -s -X POST "$BASE/webhooks/v1/pos/update_store_status" \
-  -H 'Content-Type: application/json' \
-  -d "{\"restID\":\"$REST_ID\"}"
-```
-
-#### Step 10: Test Order Push Flow (GrubGenie → Petpooja)
-
-When an order is placed (or accepted in manual mode), GrubGenie pushes it to Petpooja via BullMQ queue `petpoojaOrderPush`. It runs async — the API returns before push completes.
-
-To verify push happened:
-1. Place an order normally (Workflow 1)
-2. Check server logs for `[petpoojaOrderPush]` entries
-3. The push includes addon/customization mapping — verify addons appear in Petpooja's order
-
-`updatePosOrderStatus` is also wired into order + table controllers — when GrubGenie changes an order status internally (accept/reject/complete), it syncs back to Petpooja.
-
-#### Step 11: Test Duplicate POS ID Validation
-
-As of commit d642ec6, linking the same Petpooja `itemId` or variant `variationId` to a second menu item returns 409.
-
-```bash
-# First link succeeds
-curl -s -X PUT "$BASE/v1/partner/menu/$ITEM_ID_1" \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"pos":{"petpooja":{"itemId":"some-pos-id"}}}'
-
-# Same POS itemId on a different menu item → 409
-curl -s -X PUT "$BASE/v1/partner/menu/$ITEM_ID_2" \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"pos":{"petpooja":{"itemId":"some-pos-id"}}}'
-# Expected: 409 Conflict — POS item ID already linked
-```
-
-Same applies to variant `variationId` in the variants array.
-
-#### Current Limitations
-
-- **Menu may be empty**: Petpooja restaurant (i4fwyk7e) has 0 items initially — use sync-menu to import
-- **Structure works**: 33 categories are mapped from Petpooja correctly
-- **Validation enforced**: System rejects invalid POS IDs (correct behavior!)
-
-#### API Endpoints for POS Testing
-
-**Partner API (auth required):**
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /v1/partner/pos/menu?provider=petpooja` | Fetch raw POS menu (categories + items) |
-| `GET /v1/partner/pos/:provider/items` | Fetch POS items enriched with GrubGenie link status |
-| `POST /v1/partner/pos/sync-menu` | Trigger async menu import (body: `{"provider":"petpooja"}`) |
-| `POST /v1/partner/menu` | Create menu item linked to POS |
-| `PUT /v1/partner/menu/:menuItemId` | Update item POS link (validates no duplicate IDs → 409) |
-| `POST /v1/partner/menu/add-variant/:itemId` | Create variant linked to POS |
-
-**Petpooja Inbound Webhooks (no auth — called by Petpooja):**
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /webhooks/v1/pos/menu_push` | Petpooja pushes full menu → invalidate cache + enqueue sync |
-| `POST /webhooks/v1/pos/get_store_status` | Petpooja queries store open/closed |
-| `POST /webhooks/v1/pos/update_store_status` | Petpooja updates store open/closed |
-| `POST /webhooks/v1/pos/item_off` | Petpooja marks item unavailable |
-| `POST /webhooks/v1/pos/item_on` | Petpooja marks item available |
-| `POST /webhooks/v1/pos/order_callback` | Petpooja sends order status update |
-
-#### POS Configuration (Separate from Testing)
-
-```bash
-bash $SKILL/branch_pos_config.sh setup       # Enable POS (uses test credentials)
-bash $SKILL/branch_pos_config.sh get         # View current config
-bash $SKILL/branch_pos_config.sh disable     # Remove config
-```
-
-### Workflow 4: Order Approval/Rejection (Manual Acceptance)
-
-Enable manual approval on branch:
-```bash
-curl -X PUT $BASE/v1/partner/branch/update-branch/3XSJT \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
+curl -X PUT "$BASE/v1/partner/branch/update-branch/3XSJT" \
+  -H "Authorization: Bearer $PARTNER_TOKEN" -H 'Content-Type: application/json' \
   -d '{"orderAcceptanceMode":"manual"}'
 ```
 
-Then place order (response: "Order submitted for approval"). Accept/reject:
-```bash
-# Accept with modifications
-curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"accept","modifications":[{"itemId":"<id>","quantity":2}]}'
+Placed orders now land in `pending_acceptance` immediately (see Key API Facts for the exact
+state-machine correction). Accept or reject:
 
-# Reject
-curl -X PATCH $BASE/v1/partner/order-history/respond/$ORDER_ID \
-  -H "Authorization: Bearer $PARTNER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"reject","rejectionReason":"Item out of stock"}'
+```bash
+curl -X PATCH "$BASE/v1/partner/order-history/respond/$ORDER_ID" \
+  -H "Authorization: Bearer $PARTNER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"action":"accept","modifications":[{"itemId":"<id>","quantity":2}]}'
 ```
 
-**Rules:**
-- `action` required: `"accept"` or `"reject"`
-- `rejectionReason` required on reject; forbidden on accept
-- `modifications` allowed only on accept (not reject)
-- Each modification: XOR `itemId`/`comboId` + `quantity` ≥ 1
-
----
+`action` is required (`accept`/`reject`); `rejectionReason` required on reject, forbidden on
+accept; `modifications` allowed only on accept; each modification needs exactly one of
+`itemId`/`comboId`. Full validation table and edge cases: `references/advanced_flows.md`.
 
 ## Key API Facts (Common Mistakes)
 
 | Mistake | Fix |
-|---------|-----|
-| Partner token at `result.tokens.access.token` | ✅ Use `result.accessToken` |
-| Diner ID at `result.diner._id` | ✅ Use `result._id` |
-| Cart ID at `result._id` | ✅ Use `result.cartId` |
-| Order ID: use order `_id` | ✅ Use `result.currentActiveOrder` |
-| Order route: `POST /v1/genie/order` with body params | ✅ Use query params: `?cartId=:cartId&dinerId=:dinerId` |
-| Combo order: use `itemId` key | ✅ Use `comboId` key |
-| Place order route: `PUT /v1/genie/order/:orderId` | ✅ Add query param: `?cartId=:cartId` |
-| branchId from token | ✅ Decode JWT: `echo "$PARTNER_TOKEN" \| cut -d'.' -f2 \| tr '_-' '/+' \| base64 -d 2>/dev/null \| jq .` |
-| munch2 branchId | `D13GZ` |
-| Payment blocked | ✅ Partner must accept/reject all pending orders first |
-| Modifications on reject | ✅ Forbidden — use `rejectionReason` instead |
-| POS config in branch create/update | ✅ Use dedicated `/v1/partner/branch/pos-config` endpoints |
-| POS creds visible to diners | ✅ Hidden from diner APIs, only partner APIs |
-| Sync-menu returns 404/500 | ✅ POS config not set — run `branch_pos_config.sh setup` first |
-| Sync-menu returns 409 | ✅ Job already running — wait for it to complete or socket to emit `syncing: false` |
-| Socket: listen on combined ocr/pos channel | ✅ Channels are separate: `menuOcr`, `posMenuImport`, `imageGen` |
-| Agent menu route: `/v1/agents/*` | ✅ Use `/v1/agents/menu/*` |
-| Order items field: `items` | ✅ Use `orderDetails` array |
-| Webhook auth: send auth header to `/webhooks/v1/pos/*` | ✅ No auth middleware — Petpooja calls these directly, no token needed |
-| Order push is synchronous | ✅ Async via BullMQ `petpoojaOrderPush` — API returns before push completes, check logs |
-| Petpooja `orderID` maps to GrubGenie order `_id` | ✅ Maps to `orderNumber` field, not `_id` |
-
----
-
-## Quick Reference Cheat Sheet
-
-### Test Credentials
-
-```
-Partner: munchuser@yopmail.com / Test@123 (branchId: 3XSJT)
-Diner:   fingerprint: grubgenie-stripe-test-002
-Admin:   hello@grubgenie.ai / $$grubgod123
-```
-
-### Known Test Data (munch2)
-
-```
-Snack Combo:  69f8757fd475a8cf66ed94f2 (24 AED)
-Ulli Vada:    691bf10018f1d3c34db1db00 (12 AED)
-Test Diner:   69f89034e0a784fea33a0d12
-```
-
-### Petpooja Credentials (Test)
-
-```
-appKey:    xz8swugh0vp9oymdab2tkne1qr5c3i67
-restId:    i4fwyk7e
-```
-
-### Token Extraction
-
-```bash
-# Set endpoint (defaults to localhost:3000)
-export BASE=http://localhost:3000
-
-# Partner token
-PARTNER_TOKEN=$(curl -s -X POST $BASE/v1/partner/auth/signin \
-  -H "Content-Type: application/json" \
-  -d '{"email":"munchuser@yopmail.com","password":"Test@123"}' | jq -r '.result.accessToken')
-
-# Diner auth
-DINER_RESPONSE=$(curl -s "$BASE/v1/genie/diner?customDomain=munch2&branchId=3XSJT&fingerprint=grubgenie-stripe-test-002")
-DINER_TOKEN=$(echo $DINER_RESPONSE | jq -r '.result.accessToken')
-DINER_ID=$(echo $DINER_RESPONSE | jq -r '.result._id')
-```
-
----
+|---|---|
+| Partner token at `result.tokens.access.token` | Use `result.accessToken` |
+| Cart ID at `result._id` | Use `result.cartId` |
+| Order route takes body params | Use query params: `?cartId=&dinerId=` |
+| Combo order uses `itemId` key | Use `comboId` key |
+| Place-order route has no query param | Add `?cartId=` |
+| munch2 branchId | `3XSJT` (single source of truth: `scripts/lib/constants.sh`) |
+| Payment blocked | Partner must accept/reject all pending orders first |
+| POS config via branch create/update | Use dedicated `/v1/partner/branch/pos-config` endpoints |
+| Sync-menu returns 404/500 | POS config not set — run `pos.sh config setup` first |
+| Sync-menu returns 409 | Job already running — `pos.sh sync` treats this as success |
+| Socket: one combined ocr/pos channel | Channels are separate: `menuOcr`, `posMenuImport`, `imageGen` |
+| Webhook auth on `/webhooks/v1/pos/*` | No auth middleware — Petpooja calls these directly |
+| `pending_acceptance` entered after partner responds | Entered immediately on place-order (manual mode); partner's decision moves it OUT, to `preparing`/`rejected` |
+| Petpooja `orderID` maps to order `_id` | Maps to `orderNumber` field, not `_id` |
 
 ## References
 
-### Navigation
-
-- **Full API routes + schemas**: `references/api_reference.md`
-- **Auth, permissions, security bugs**: `references/auth_security.md`
-- **Order approval flows, variant selection, success pages**: `references/advanced_flows.md`
-- **Petpooja integration, credentials, setup**: `references/petpooja_setup.md`
-- **Debugging errors and edge cases**: `references/debugging_guide.md`
-
-### What Lives Where
-
-- **SKILL.md** (this file): Overview, quick start, script inventory, core rules, cheat sheet
-- **api_reference.md**: Full route map, test credentials, complete curl examples
-- **auth_security.md**: Permission system, auth middleware details, known bugs
-- **advanced_flows.md**: Order approval/rejection, variant selection, success pages, POS config edge cases
-- **petpooja_setup.md**: Petpooja credentials, integration, setup guide
-- **debugging_guide.md**: Common errors, troubleshooting, context-mode patterns
-
----
+- **[Onboarding](./references/setup.md)** — full per-OS setup, dependencies, Git Bash on Windows
+- **[API Reference](./references/api_reference.md)** — full route map, test credentials, POS + webhook routes, schemas
+- **[Auth & Security](./references/auth_security.md)** — auth middleware, permissions, known bugs
+- **[Advanced Flows](./references/advanced_flows.md)** — order approval/rejection, variant selection, success pages
+- **[Petpooja Setup](./references/petpooja_setup.md)** — credentials, POS config endpoints, validation rules
+- **[Debugging Guide](./references/debugging_guide.md)** — common errors, context-mode patterns
+- **[evals/](./evals/)** — offline smoke suite (`run_evals.sh --offline`); runs with no live API needed
 
 ## Status
 
-✅ **All 9 helper scripts validated and working**
-✅ **Order approval/rejection flow** (manual & auto)
-✅ **Variant selection** (pricing override, validation)
-✅ **Petpooja POS** (multi-provider ready, credentials hidden)
-✅ **POS menu sync** (`POST /v1/partner/pos/sync-menu` → BullMQ job → socket progress)
-✅ **POS items fetch** (`GET /v1/partner/pos/:provider/items` → enriched with GrubGenie link status)
-✅ **Separate socket channels** (`menuOcr`, `posMenuImport`, `imageGen`)
-✅ **Context-mode integration** (batch execute, search, sandbox)
-✅ **Petpooja inbound webhooks** (menu_push, item_on/off, store status, order_callback)
-✅ **Order push to Petpooja** (async via BullMQ `petpoojaOrderPush` queue)
-✅ **updatePosOrderStatus** (wired into order + table controllers — syncs GrubGenie→Petpooja)
-✅ **Duplicate POS ID validation** (409 Conflict when same itemId/variationId linked to 2 items)
+Full bash/PowerShell parity across 16 scripts + shared lib, verified via `evals/run_evals.sh
+--offline` (syntax, conventions, secret gate, cross-language exit-code parity). See `evals/` for
+the live-API test suite. Refactor history: `REFACTOR_SUMMARY.md`.

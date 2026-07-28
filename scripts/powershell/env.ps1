@@ -1,11 +1,8 @@
-param([string]$Env = "local")
-# Usage: . $SKILL\env.ps1 [local|dev|prod]
+# Usage: . ./env.ps1 [-Env local|dev|prod]  (dot-source so $env:BASE persists in your session)
+param([string]$Env = 'local')
+. "$PSScriptRoot/lib/Bootstrap.ps1"
 
-switch ($Env) {
-    "local" { $env:BASE = "http://localhost:3000" }
-    "dev"   { $env:BASE = "https://dev-backend.grubgenie.ai" }
-    "prod"  { $env:BASE = "https://backend.grubgenie.ai" }
-    default { Write-Error "Unknown environment '$Env'. Use: local | dev | prod"; exit 1 }
-}
-
-Write-Host "Environment: $Env -> $env:BASE" -ForegroundColor Green
+$base = Resolve-GgBase -Name $Env
+$env:BASE = $base
+Write-Output $base
+Write-GgInfo "Environment: $Env -> $base"

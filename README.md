@@ -68,32 +68,40 @@ $SKILL = "$HOME\.claude\skills\grubgenie-api-test\scripts\powershell"
 
 ## Script Reference
 
-### Bash (`scripts/`)
+Every script exists in both `scripts/*.sh` (bash) and `scripts/powershell/*.ps1` (PowerShell) —
+same name, same behavior, same exit codes (`0` success, `2` usage error, `4`/`5` unexpected
+HTTP status, `6` response contract violation, `7` unreachable). Both languages share an
+architecture layer (`scripts/lib/` / `scripts/powershell/lib/`) — see `SKILL.md` and
+`AGENTS.md` for details.
 
-| Script | Purpose |
-|--------|---------|
-| `env.sh` | Set target environment |
-| `auth.sh` | Authenticate partner + diner |
-| `create_cart.sh` | Create a cart |
-| `order_item.sh <itemId> [qty]` | Order a menu item |
-| `order_combo.sh [comboId] [qty]` | Order a combo |
-| `flow_dine_in_pay.sh [itemId] [qty]` | Full E2E flow |
-| `fetch_menu.sh [items\|categories\|search\|restaurant-info]` | Browse menu |
-| `agent_test.sh "<message>"` | Chat with the AI agent |
-| `reset_tables.sh` | Reset all tables |
-| `get_pos_menu.sh` | Fetch POS menu (Petpooja) |
-| `test_pos_validation.sh` | Validate POS ID rejection |
-| `branch_pos_config.sh [setup\|get\|disable]` | Manage POS config |
+| Script | Purpose | Bash usage |
+|--------|---------|-------|
+| `env` | Set target environment | `eval "$(bash $SKILL/env.sh local\|dev\|prod)"` |
+| `auth` | Authenticate partner + diner (idempotent) | `eval "$(bash $SKILL/auth.sh [--force])"` |
+| `create_cart` | Create a cart | `export CART_ID=$(bash $SKILL/create_cart.sh)` |
+| `order` | Order an item or combo, then place it | `bash $SKILL/order.sh item\|combo <id> [qty]` |
+| `flow_dine_in_pay` | Full E2E: cart → order → place → approve → pay → confirm | `bash $SKILL/flow_dine_in_pay.sh [itemId] [qty]` |
+| `fetch_menu` | Browse menu (17 subcommands) | `bash $SKILL/fetch_menu.sh [command] [arg]` |
+| `pos` | Petpooja POS: menu, items, sync, config, validate | `bash $SKILL/pos.sh menu\|items\|sync\|config\|validate` |
+| `agent_test` | Chat with the AI agent | `bash $SKILL/agent_test.sh "<message>"` |
+| `reset_tables` | Reset all tables | `bash $SKILL/reset_tables.sh` |
 
-### PowerShell (`scripts/powershell/`)
+Back-compat shims (still fully functional, delegate to `order`/`pos` above): `order_item`,
+`order_combo`, `get_pos_menu`, `fetch_pos_items`, `sync_pos_menu`, `branch_pos_config`,
+`test_pos_validation`.
 
-| Script | Purpose |
-|--------|---------|
-| `env.ps1 [local\|dev\|prod]` | Set target environment |
-| `auth.ps1` | Authenticate partner + diner |
-| `create_cart.ps1` | Create a cart |
-| `order_item.ps1 -ItemId <id> [-Qty 2]` | Order a menu item |
-| `flow_dine_in_pay.ps1 [-ItemId <id>] [-Qty 2]` | Full E2E flow |
+PowerShell equivalents live at `scripts/powershell/<name>.ps1`. `env.ps1` and `auth.ps1` are
+meant to be dot-sourced (`. script.ps1`); every other script is a normal invocation.
+
+## Verifying your install
+
+```bash
+bash scripts/../evals/run_evals.sh --offline   # or: pwsh evals/run_evals.ps1 -Mode offline
+```
+
+Runs syntax/lint/convention checks and a local contract-mock suite (no live API needed) —
+including a cross-language check that bash and PowerShell produce identical exit codes for
+identical inputs.
 
 ## Using with Claude
 

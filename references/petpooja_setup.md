@@ -146,13 +146,16 @@ bash $SKILL/branch_pos_config.sh disable
 
 ### Petpooja Account (munch2 restaurant)
 
-| Field | Value |
-|-------|-------|
-| **appKey** | `xz8swugh0vp9oymdab2tkne1qr5c3i67` |
-| **appSecret** | `1c54ca0d1f1f84bc9bfec49b9a2efd7852bdef59` |
-| **accessToken** | `c6038984b2ce7e1797f7ddc5b73641e1add36bf4` |
-| **restId** | `i4fwyk7e` |
-| **baseUrl** | `https://qle1yy2ydc.execute-api.ap-southeast-1.amazonaws.com/V1` |
+| Field | Value | Secret? |
+|-------|-------|---------|
+| **appKey** | `xz8swugh0vp9oymdab2tkne1qr5c3i67` | No — public, lives in `scripts/lib/constants.sh` |
+| **appSecret** | *(ask a teammate)* | **Yes** — put in `scripts/config/credentials.env`, never commit |
+| **accessToken** | *(ask a teammate)* | **Yes** — same as above |
+| **restId** | `i4fwyk7e` | No — public, lives in `scripts/lib/constants.sh` |
+| **baseUrl** | `https://qle1yy2ydc.execute-api.ap-southeast-1.amazonaws.com/V1` | No |
+
+Copy `scripts/config/credentials.example.env` to `scripts/config/credentials.env` (gitignored) and
+fill in the secret pair. `pos.sh config setup` reads it automatically.
 
 ### Live Petpooja Setup
 
