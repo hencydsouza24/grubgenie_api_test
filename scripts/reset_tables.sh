@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
 # Reset all tables to "available", force-clearing any active carts.
 # Usage: bash reset_tables.sh
-# Requires: PARTNER_TOKEN (from auth.sh)
+# Auths itself (see auth.sh) if no session exists yet or the existing one has expired.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/bootstrap.sh"
 
-set -euo pipefail
-BASE=${BASE:-http://localhost:3000}
+RESP="$(gg_tables_list)" || exit $?
 
-TABLE_IDS=$(curl -s "$BASE/v1/partner/table" \
-  -H "Authorization: Bearer $PARTNER_TOKEN" | jq -r '.result[]._id')
-
-for TID in $TABLE_IDS; do
-  RESP=$(curl -s -X PUT "$BASE/v1/partner/table/table-status/$TID" \
-    -H "Authorization: Bearer $PARTNER_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"status":"available","confirmed":true}')
-  MSG=$(echo "$RESP" | jq -r '.message // tojson' 2>/dev/null)
-  echo "# $TID -> $MSG" >&2
+for TID in $(echo "$RESP" | jq -r '.result[]._id'); do
+  MSG="$(gg_table_set_status "$TID" available)" || exit $?
+  gg_kv "$TID" "$MSG"
 done
 
-echo "# All tables reset to available" >&2
+gg_info "All tables reset to available"

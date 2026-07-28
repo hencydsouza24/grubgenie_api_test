@@ -1,23 +1,19 @@
+# Back-compat shim — see order.ps1. Usage: pwsh ./order_item.ps1 <itemId> [-Qty 2]
+# A function-level shim, not a script delegation: calling another .ps1 file via `&` or dot-source
+# swallows that file's `exit` (PowerShell only propagates exit codes across a REAL subprocess
+# boundary, e.g. `pwsh -File`), so this calls the same lib functions order.ps1 calls directly.
 param(
-    [Parameter(Mandatory)][string]$ItemId,
+    [Parameter(Mandatory, Position = 0)][string]$ItemId,
     [int]$Qty = 1
 )
-# Dot-source to set $env:ORDER_ID:
-# . $SKILL\order_item.ps1 -ItemId <id> [-Qty 2]
+. "$PSScriptRoot/lib/Bootstrap.ps1"
 
-$r = Invoke-RestMethod -Uri "$env:BASE/v1/genie/order?cartId=$env:CART_ID&dinerId=$env:DINER_ID" `
-    -Method POST -ContentType "application/json" `
-    -Headers @{ Authorization = "Bearer $env:DINER_TOKEN" } `
-    -Body "{`"items`":[{`"itemId`":`"$ItemId`",`"quantity`":$Qty}]}"
-
-if (-not $r.result.currentActiveOrder) {
-    Write-Error "Failed to create order: $($r | ConvertTo-Json)"
-    exit 1
+if (-not $env:CART_ID) {
+    Exit-GgDie -ExitCode $Script:GgExitUsage -Message 'CART_ID not set — run: $env:CART_ID = & "create_cart.ps1"'
 }
 
-$env:ORDER_ID = $r.result.currentActiveOrder
-Write-Host "Order: $env:ORDER_ID" -ForegroundColor Cyan
+$orderId = New-GgOrder -CartId $env:CART_ID -LineKey 'itemId' -LineId $ItemId -Qty $Qty
+$msg = Submit-GgOrder -CartId $env:CART_ID -OrderId $orderId
+Write-GgInfo "Place result: $msg"
 
-$p = Invoke-RestMethod -Uri "$env:BASE/v1/genie/order/place-order/$($env:ORDER_ID)?cartId=$env:CART_ID" `
-    -Method PUT -Headers @{ Authorization = "Bearer $env:DINER_TOKEN" }
-Write-Host "Place: $($p.message)" -ForegroundColor Cyan
+Write-Output $orderId

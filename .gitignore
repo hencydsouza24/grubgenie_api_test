@@ -2,3 +2,6 @@
 .claude/
 COMPLETION_REPORT.md
 REFACTOR_SUMMARY.md
+
+# Real secrets — see scripts/config/credentials.example.env for the template.
+scripts/config/credentials.env

@@ -1,22 +1,10 @@
 #!/usr/bin/env bash
 # Usage: eval "$(bash env.sh [local|dev|prod])"
-# Sets BASE for the target environment, then run auth.sh.
+# Prints `export BASE=...` for the target environment — eval it, then run auth.sh.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/bootstrap.sh"
 
-ENV=${1:-local}
+ENV_NAME="${1:-local}"
+BASE_URL="$(gg_resolve_base "$ENV_NAME")" || exit $?
 
-case "$ENV" in
-  local) BASE="http://localhost:3000" ;;
-  dev)   BASE="https://dev-backend.grubgenie.ai" ;;
-  prod)  BASE="https://backend.grubgenie.ai" ;;
-  *)
-    echo "Unknown environment: $ENV" >&2
-    echo "Usage: eval \"\$(bash env.sh [local|dev|prod])\"" >&2
-    echo "  local  → http://localhost:3000" >&2
-    echo "  dev    → https://dev-backend.grubgenie.ai" >&2
-    echo "  prod   → https://backend.grubgenie.ai" >&2
-    exit 1
-    ;;
-esac
-
-echo "export BASE=$BASE"
-echo "# Environment: $ENV → $BASE" >&2
+echo "export BASE=$BASE_URL"
+gg_info "Environment: $ENV_NAME -> $BASE_URL"

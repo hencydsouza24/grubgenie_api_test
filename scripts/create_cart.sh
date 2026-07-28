@@ -1,22 +1,7 @@
 #!/usr/bin/env bash
 # Usage: CART_ID=$(bash create_cart.sh)
-# Requires: DINER_TOKEN, TABLE_ID (from auth.sh)
+# Creates a cart against the active session's table. Auths itself (see auth.sh) if no session
+# exists yet or the existing one has expired.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/bootstrap.sh"
 
-set -euo pipefail
-BASE=${BASE:-http://localhost:3000}
-
-CART_RESPONSE=$(curl -s -X POST "$BASE/v1/genie/cart" \
-  -H "Authorization: Bearer $DINER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"tableId\":\"$TABLE_ID\"}")
-
-CART_ID=$(echo "$CART_RESPONSE" | jq -r '.result.cartId')
-
-if [ "$CART_ID" = "null" ] || [ -z "$CART_ID" ]; then
-  echo "Error creating cart:" >&2
-  echo "$CART_RESPONSE" | jq . >&2
-  exit 1
-fi
-
-echo "# Cart: $CART_ID" >&2
-echo "$CART_ID"
+gg_cart_create
