@@ -8,11 +8,18 @@ readonly GG_ENV_LOCAL="http://localhost:3000"
 readonly GG_ENV_DEV="https://dev-backend.grubgenie.ai"
 readonly GG_ENV_PROD="https://backend.grubgenie.ai"
 
-# Test tenant (munch2). branchId is 3XSJT — the canonical value across docs and every script
-# except the old auth.sh, which used D13GZ; this was a bug, not a second real branch.
+# Test tenant (munch2).
 readonly GG_CUSTOM_DOMAIN="munch2"
-readonly GG_BRANCH_ID="3XSJT"
 readonly GG_FINGERPRINT="grubgenie-stripe-test-002"
+
+# GG_BRANCH_ID is NOT used for diner auth — lib/auth.sh decodes the real branchId from the
+# partner token's own JWT claim instead. A partner account can have multiple branches (confirmed
+# live: the test account has 9: 3XSJT, D13GZ, and 7 others) and its "currently selected" branch
+# changes via /v1/partner/branch/switch-branch — a hardcoded literal here would go stale the
+# moment someone switches, exactly as happened between this skill's original D13GZ/3XSJT
+# inconsistency and the account's current active branch (neither). Kept only as an example value
+# for docs/reference — do not wire it back into an auth call.
+readonly GG_BRANCH_ID="3XSJT"
 
 # Partner test credentials — a throwaway mailbox against a shared test tenant. Safe to keep
 # tracked; this is what makes the zero-config happy path possible.

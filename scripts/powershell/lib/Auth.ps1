@@ -55,23 +55,50 @@ function Get-GgAdminToken {
     return Get-GgJsonField -Json $resp -Path '.result.accessToken' -Label 'admin accessToken'
 }
 
-# Get-GgDinerAuth <base> <partnerToken> → returns @{ TableId; DinerToken; DinerId }
+# Get-GgJwtField <token> <claim> → decode a JWT's payload (base64url, unverified — same trust
+# level as everywhere else in this skill, which already holds the bearer token in plaintext) and
+# return one claim.
+function Get-GgJwtField {
+    param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$Claim)
+
+    $payload = $Token.Split('.')[1].Replace('-', '+').Replace('_', '/')
+    $payload += ('=' * ((4 - $payload.Length % 4) % 4))
+    $json = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload))
+    $obj = $json | ConvertFrom-Json
+    return "$($obj.$Claim)"
+}
+
+# Get-GgDinerAuth <base> <partnerToken> → returns @{ BranchId; TableId; DinerToken; DinerId }
+#
+# branchId is decoded from the PARTNER TOKEN's own claim, not a hardcoded constant. A partner
+# account can have multiple branches (confirmed live: this test account has 9), and the JWT's
+# branchId reflects whichever one is CURRENTLY SELECTED via /v1/partner/branch/switch-branch —
+# the account's active branch can change over time. A fixed literal here goes stale the moment
+# someone switches branches: /v1/partner/table (called with this same token) returns tables
+# scoped to the active branch, so if the diner authenticates against a DIFFERENT branchId than
+# the partner's active one, cart creation 404s ("Table not found") even though both branchIds are
+# individually valid.
 function Get-GgDinerAuth {
     param([Parameter(Mandatory)][string]$Base, [Parameter(Mandatory)][string]$PartnerToken)
+
+    $branchId = Get-GgJwtField -Token $PartnerToken -Claim 'branchId'
+    if (-not $branchId) {
+        Exit-GgDie -ExitCode $Script:GgExitContract -Message 'could not decode branchId from partner token'
+    }
 
     $resp = Invoke-GgHttpOrDie -Label 'table fetch' -Method GET -Path "$Base/v1/partner/table" -Token $PartnerToken
     $tableId = Get-GgJsonField -Json $resp -Path '.result[0]._id' -Label 'table id'
 
     $dinerResp = Invoke-GgHttpOrDie -Label 'diner auth' -Method GET -Path "$Base/v1/genie/diner" -Query @{
         customDomain = $Script:GgCustomDomain
-        branchId     = $Script:GgBranchId
+        branchId     = $branchId
         fingerprint  = $Script:GgFingerprint
     }
 
     $dinerToken = Get-GgJsonField -Json $dinerResp -Path '.result.accessToken' -Label 'diner accessToken'
     $dinerId = Get-GgJsonField -Json $dinerResp -Path '.result._id' -Label 'diner id'
 
-    return @{ TableId = $tableId; DinerToken = $dinerToken; DinerId = $dinerId }
+    return @{ BranchId = $branchId; TableId = $tableId; DinerToken = $dinerToken; DinerId = $dinerId }
 }
 
 # Confirm-GgSession [-Force] → writes/refreshes the session file for the current environment and
@@ -96,7 +123,7 @@ function Confirm-GgSession {
     $session = @{
         base         = $base
         env          = $envName
-        branchId     = $Script:GgBranchId
+        branchId     = $diner.BranchId
         partnerToken = $partnerToken
         tableId      = $diner.TableId
         dinerToken   = $diner.DinerToken

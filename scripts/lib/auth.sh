@@ -63,24 +63,50 @@ gg_auth_admin() {
   gg_json_field "$resp" '.result.accessToken' "admin accessToken"
 }
 
-# gg_auth_diner <base> <partner_token> → prints {"tableId","dinerToken","dinerId"}
+# gg_jwt_field <token> <claim> → decode a JWT's payload (base64url, unverified — same trust
+# level as everywhere else in this skill, which already holds the bearer token in plaintext) and
+# print one claim.
+gg_jwt_field() {
+  local token="$1" claim="$2"
+  python3 -c "
+import base64, json, sys
+p = sys.argv[1].split('.')[1]
+p += '=' * (-len(p) % 4)
+print(json.loads(base64.urlsafe_b64decode(p)).get(sys.argv[2], ''))
+" "$token" "$claim"
+}
+
+# gg_auth_diner <base> <partner_token> → prints {"branchId","tableId","dinerToken","dinerId"}
+#
+# branchId is decoded from the PARTNER TOKEN's own claim, not a hardcoded constant. A partner
+# account can have multiple branches (confirmed live: this test account has 9), and the JWT's
+# branchId reflects whichever one is CURRENTLY SELECTED via /v1/partner/branch/switch-branch —
+# the account's active branch can change over time. A fixed literal here goes stale the moment
+# someone switches branches: /v1/partner/table (called with this same token) returns tables
+# scoped to the active branch, so if the diner authenticates against a DIFFERENT branchId than
+# the partner's active one, cart creation 404s ("Table not found") even though both branchIds are
+# individually valid. Matching the diner's branch to the partner token's own branch is what keeps
+# table lookups and diner auth pointed at the same place regardless of which branch is active.
 gg_auth_diner() {
   local base="$1" partner_token="$2"
-  local resp table_id diner_resp diner_token diner_id
+  local resp table_id diner_resp diner_token diner_id branch_id
+
+  branch_id="$(gg_jwt_field "$partner_token" branchId)" || exit $?
+  [ -n "$branch_id" ] || gg_die "$GG_EXIT_CONTRACT" "could not decode branchId from partner token"
 
   resp="$(gg_http_or_die "table fetch" GET "${base}/v1/partner/table" --token "$partner_token")" || exit $?
   table_id="$(gg_json_field "$resp" '.result[0]._id' "table id")" || exit $?
 
   diner_resp="$(gg_http_or_die "diner auth" GET "${base}/v1/genie/diner" \
     --query "customDomain=${GG_CUSTOM_DOMAIN}" \
-    --query "branchId=${GG_BRANCH_ID}" \
+    --query "branchId=${branch_id}" \
     --query "fingerprint=${GG_FINGERPRINT}")" || exit $?
 
   diner_token="$(gg_json_field "$diner_resp" '.result.accessToken' "diner accessToken")" || exit $?
   diner_id="$(gg_json_field "$diner_resp" '.result._id' "diner id")" || exit $?
 
-  jq -n --arg tableId "$table_id" --arg dinerToken "$diner_token" --arg dinerId "$diner_id" \
-    '{tableId: $tableId, dinerToken: $dinerToken, dinerId: $dinerId}'
+  jq -n --arg branchId "$branch_id" --arg tableId "$table_id" --arg dinerToken "$diner_token" --arg dinerId "$diner_id" \
+    '{branchId: $branchId, tableId: $tableId, dinerToken: $dinerToken, dinerId: $dinerId}'
 }
 
 # gg_auth_ensure [--force] → writes/refreshes the session file for the current environment and
@@ -101,10 +127,11 @@ gg_auth_ensure() {
   fi
 
   gg_step 1 "Authenticating ($env)"
-  local partner_token diner_json table_id diner_token diner_id session
+  local partner_token diner_json branch_id table_id diner_token diner_id session
 
   partner_token="$(gg_auth_partner "$base")" || exit $?
   diner_json="$(gg_auth_diner "$base" "$partner_token")" || exit $?
+  branch_id="$(gg_json_field "$diner_json" '.branchId' "branchId")" || exit $?
   table_id="$(gg_json_field "$diner_json" '.tableId' "tableId")" || exit $?
   diner_token="$(gg_json_field "$diner_json" '.dinerToken' "dinerToken")" || exit $?
   diner_id="$(gg_json_field "$diner_json" '.dinerId' "dinerId")" || exit $?
@@ -112,7 +139,7 @@ gg_auth_ensure() {
   session="$(jq -n \
     --arg base "$base" \
     --arg env "$env" \
-    --arg branchId "$GG_BRANCH_ID" \
+    --arg branchId "$branch_id" \
     --arg partnerToken "$partner_token" \
     --arg tableId "$table_id" \
     --arg dinerToken "$diner_token" \
