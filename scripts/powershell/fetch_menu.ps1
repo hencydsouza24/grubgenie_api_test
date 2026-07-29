@@ -27,8 +27,10 @@ switch ($Command) {
     'items-search' {
         if (-not $Arg) { Exit-GgDie -ExitCode $Script:GgExitUsage -Message 'Usage: fetch_menu.ps1 items-search <query>' }
         $partnerToken = Get-GgSessionValue -Key 'partnerToken'
-        $resp = Invoke-GgHttpOrDie -Label 'item search' -Method GET -Path '/v1/partner/menu/item/search' -Token $partnerToken -Query @{ q = $Arg }
-        @(($resp | ConvertFrom-Json).result | Select-Object _id, @{n = 'name'; e = { $_.itemName } }, price) | ConvertTo-Json -Depth 5
+        # Route is /v1/partner/menu/search (not .../item/search) with query param `search` (not
+        # `q`) — confirmed against the real backend and the Bruno collection.
+        $resp = Invoke-GgHttpOrDie -Label 'item search' -Method GET -Path '/v1/partner/menu/search' -Token $partnerToken -Query @{ search = $Arg }
+        @(($resp | ConvertFrom-Json).result | Select-Object _id, @{n = 'name'; e = { $_.item_name } }, @{n = 'price'; e = { $_.oPrice } }) | ConvertTo-Json -Depth 5
     }
     'categories' {
         $dinerToken = Get-GgSessionValue -Key 'dinerToken'
@@ -38,13 +40,15 @@ switch ($Command) {
     'food-types' {
         $dinerToken = Get-GgSessionValue -Key 'dinerToken'
         $resp = Invoke-GgHttpOrDie -Label 'food types' -Method GET -Path '/v1/genie/menu/food-type' -Token $dinerToken
-        @(($resp | ConvertFrom-Json).result | Select-Object _id, name) | ConvertTo-Json -Depth 5
+        # Field is `food_type`, not `name` — confirmed against the real backend.
+        @(($resp | ConvertFrom-Json).result | Select-Object _id, @{n = 'name'; e = { $_.food_type } }) | ConvertTo-Json -Depth 5
     }
     'restaurant-info' {
         $dinerToken = Get-GgSessionValue -Key 'dinerToken'
         $resp = Invoke-GgHttpOrDie -Label 'restaurant info' -Method GET -Path '/v1/genie/menu/restaurant-info' -Token $dinerToken
         $r = ($resp | ConvertFrom-Json).result
-        [PSCustomObject]@{ name = $r.restaurantName; logo = $r.logoURL; address = $r.address } | ConvertTo-Json -Depth 5
+        # Field is bare `.name`, not `.restaurantName` — confirmed against the real backend.
+        [PSCustomObject]@{ name = $r.name; logo = $r.logoURL; address = $r.address } | ConvertTo-Json -Depth 5
     }
     'branches' {
         $domain = if ($Arg) { $Arg } else { $Script:GgCustomDomain }
@@ -58,13 +62,17 @@ switch ($Command) {
     'item' {
         if (-not $Arg) { Exit-GgDie -ExitCode $Script:GgExitUsage -Message 'Usage: fetch_menu.ps1 item <menuItemId>' }
         $partnerToken = Get-GgSessionValue -Key 'partnerToken'
-        $resp = Invoke-GgHttpOrDie -Label 'item' -Method GET -Path "/v1/partner/menu/item/$Arg" -Token $partnerToken
+        # Route is /v1/partner/menu/:id (not .../item/:id) with field item_name (not itemName) —
+        # confirmed against the real backend and the Bruno collection; the old path 404s.
+        $resp = Invoke-GgHttpOrDie -Label 'item' -Method GET -Path "/v1/partner/menu/$Arg" -Token $partnerToken
         $r = ($resp | ConvertFrom-Json).result
-        [PSCustomObject]@{ _id = $r._id; name = $r.itemName; price = $r.price; category = $r.foodCategory; isActive = $r.isActive } | ConvertTo-Json -Depth 5
+        [PSCustomObject]@{ _id = $r._id; name = $r.item_name; price = $r.oPrice; category = $r.foodCategoryId; isActive = $r.isActive } | ConvertTo-Json -Depth 5
     }
     'partner-items' {
         $partnerToken = Get-GgSessionValue -Key 'partnerToken'
-        $resp = Invoke-GgHttpOrDie -Label 'partner items' -Method GET -Path '/v1/partner/menu/item' -Token $partnerToken
+        # Route is /v1/partner/menu (not .../menu/item) — confirmed against the real backend and
+        # the Bruno collection; the old path 400s on a stray validator.
+        $resp = Invoke-GgHttpOrDie -Label 'partner items' -Method GET -Path '/v1/partner/menu' -Token $partnerToken
         $r = $resp | ConvertFrom-Json
         [PSCustomObject]@{
             total = $r.totalResults
