@@ -80,7 +80,9 @@ case "$CMD" in
   branches)
     DOMAIN="${2:-$GG_CUSTOM_DOMAIN}"
     RESP="$(gg_http_or_die "branches" GET "/v1/genie/menu/restaurant-branches/${DOMAIN}")" || exit $?
-    echo "$RESP" | jq '.result | {name: .restaurantName, branches: [.branches[]? | {_id, name: .branchName}]}'
+    # Field is bare `.name`, not `.restaurantName` — confirmed against the real backend (same
+    # bug as restaurant-info, same root cause).
+    echo "$RESP" | jq '.result | {name: .name, branches: [.branches[]? | {_id, name: .branchName}]}'
     ;;
 
   item)

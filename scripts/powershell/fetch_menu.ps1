@@ -54,8 +54,9 @@ switch ($Command) {
         $domain = if ($Arg) { $Arg } else { $Script:GgCustomDomain }
         $resp = Invoke-GgHttpOrDie -Label 'branches' -Method GET -Path "/v1/genie/menu/restaurant-branches/$domain"
         $r = ($resp | ConvertFrom-Json).result
+        # Field is bare `.name`, not `.restaurantName` — confirmed against the real backend.
         [PSCustomObject]@{
-            name     = $r.restaurantName
+            name     = $r.name
             branches = @($r.branches | ForEach-Object { [PSCustomObject]@{ _id = $_._id; name = $_.branchName } })
         } | ConvertTo-Json -Depth 5
     }
