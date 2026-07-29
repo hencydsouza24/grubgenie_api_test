@@ -48,8 +48,11 @@ case "$CMD" in
     Q="${2:-}"
     gg_require "$Q" "Usage: fetch_menu.sh items-search <query>"
     PARTNER_TOKEN="$(gg_session_get partnerToken)" || exit $?
-    RESP="$(gg_http_or_die "item search" GET "/v1/partner/menu/item/search" --token "$PARTNER_TOKEN" --query "q=${Q}")" || exit $?
-    echo "$RESP" | jq '.result[] | {_id, name: .itemName, price}'
+    # Route is /v1/partner/menu/search (not .../item/search) with query param `search` (not `q`)
+    # — confirmed against the real backend and the Grub Genie V2 Bruno collection
+    # (Partner/Partner-Menu/Menu-Item/Search Menu Item.bru); the old path 404s.
+    RESP="$(gg_http_or_die "item search" GET "/v1/partner/menu/search" --token "$PARTNER_TOKEN" --query "search=${Q}")" || exit $?
+    echo "$RESP" | jq '.result[] | {_id, name: .item_name, price: .oPrice}'
     ;;
 
   categories)
@@ -61,13 +64,17 @@ case "$CMD" in
   food-types)
     DINER_TOKEN="$(gg_session_get dinerToken)" || exit $?
     RESP="$(gg_http_or_die "food types" GET "/v1/genie/menu/food-type" --token "$DINER_TOKEN")" || exit $?
-    echo "$RESP" | jq '.result[] | {_id, name}'
+    # Field is `food_type`, not `name` — confirmed against the real backend (the old projection
+    # silently returned null for every row since jq doesn't error on a missing key).
+    echo "$RESP" | jq '.result[] | {_id, name: .food_type}'
     ;;
 
   restaurant-info)
     DINER_TOKEN="$(gg_session_get dinerToken)" || exit $?
     RESP="$(gg_http_or_die "restaurant info" GET "/v1/genie/menu/restaurant-info" --token "$DINER_TOKEN")" || exit $?
-    echo "$RESP" | jq '.result | {name: .restaurantName, logo: .logoURL, address: .address}'
+    # Field is bare `.name`, not `.restaurantName` (that key doesn't exist on this response —
+    # confirmed against the real backend).
+    echo "$RESP" | jq '.result | {name: .name, logo: .logoURL, address: .address}'
     ;;
 
   branches)
@@ -80,13 +87,18 @@ case "$CMD" in
     ITEM_ID="${2:-}"
     gg_require "$ITEM_ID" "Usage: fetch_menu.sh item <menuItemId>"
     PARTNER_TOKEN="$(gg_session_get partnerToken)" || exit $?
-    RESP="$(gg_http_or_die "item" GET "/v1/partner/menu/item/${ITEM_ID}" --token "$PARTNER_TOKEN")" || exit $?
-    echo "$RESP" | jq '.result | {_id, name: .itemName, price, category: .foodCategory, isActive}'
+    # Route is /v1/partner/menu/:id (not .../item/:id) with field item_name (not itemName) —
+    # confirmed against the real backend and the Bruno collection (Get Menu Item By Id.bru);
+    # the old path 404s.
+    RESP="$(gg_http_or_die "item" GET "/v1/partner/menu/${ITEM_ID}" --token "$PARTNER_TOKEN")" || exit $?
+    echo "$RESP" | jq '.result | {_id, name: .item_name, price: .oPrice, category: .foodCategoryId, isActive}'
     ;;
 
   partner-items)
     PARTNER_TOKEN="$(gg_session_get partnerToken)" || exit $?
-    RESP="$(gg_http_or_die "partner items" GET "/v1/partner/menu/item" --token "$PARTNER_TOKEN")" || exit $?
+    # Route is /v1/partner/menu (not .../menu/item) — confirmed against the real backend and the
+    # Bruno collection (Get Menu Items (paginate).bru); the old path 400s on a stray validator.
+    RESP="$(gg_http_or_die "partner items" GET "/v1/partner/menu" --token "$PARTNER_TOKEN")" || exit $?
     echo "$RESP" | jq '{total: .totalResults, items: [.result[] | {_id, name: .item_name, price: .oPrice, isActive}]}'
     ;;
 
