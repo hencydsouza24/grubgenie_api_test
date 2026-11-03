@@ -28,11 +28,15 @@ function Test-GgExpectMatch {
     return $false
 }
 
-# Invoke-GgHttp -Method <M> -Path <p> [-Token T] [-JsonBody B] [-Query @{k=v}] [-Expect SPEC]
+# Invoke-GgHttp -Method <M> -Path <p> [-Token T] [-JsonBody B] [-Query @{k=v}] [-Headers @{k=v}]
+#                [-Expect SPEC]
 # Returns: response body as a STRING — never a deserialized object (ConvertFrom-Json is Json.ps1's
 # job, explicitly, so bash `jq -r` and PS both operate on the same raw text).
 # Side effects: $Script:GgHttpStatus (numeric, or 0 if unreachable) and $Script:GgHttpExitCode
 # (0/4/5/7 — numerically identical to the bash twin's return codes).
+#
+# -Headers is for auth schemes -Token can't express (e.g. a literal `X-Api-Key: <key>` header, as
+# opposed to `Authorization: Bearer <token>`) — merged into the request headers as-is.
 function Invoke-GgHttp {
     [CmdletBinding()]
     param(
@@ -41,6 +45,7 @@ function Invoke-GgHttp {
         [string]$Token,
         [string]$JsonBody,
         [hashtable]$Query,
+        [hashtable]$Headers,
         [string]$Expect = '2xx'
     )
 
@@ -52,13 +57,16 @@ function Invoke-GgHttp {
         $url += $(if ($url.Contains('?')) { '&' } else { '?' }) + $qs
     }
 
-    $headers = @{}
-    if ($Token) { $headers['Authorization'] = "Bearer $Token" }
+    # Named $reqHeaders, not $headers — PowerShell variable names are case-insensitive, so a local
+    # $headers would collide with the -Headers parameter above instead of shadowing it.
+    $reqHeaders = @{}
+    if ($Token) { $reqHeaders['Authorization'] = "Bearer $Token" }
+    if ($Headers) { foreach ($k in $Headers.Keys) { $reqHeaders[$k] = $Headers[$k] } }
 
     $params = @{
         Uri        = $url
         Method     = $Method
-        Headers    = $headers
+        Headers    = $reqHeaders
         TimeoutSec = $Script:GgMaxTime
     }
     if ($JsonBody) {
@@ -123,11 +131,11 @@ function Invoke-GgHttp {
     return $body
 }
 
-function Invoke-GgGet    { param([Parameter(Mandatory)][string]$Path, [string]$Token, [hashtable]$Query, [string]$Expect = '2xx') Invoke-GgHttp -Method GET -Path $Path -Token $Token -Query $Query -Expect $Expect }
-function Invoke-GgPost   { param([Parameter(Mandatory)][string]$Path, [string]$Token, [string]$JsonBody, [hashtable]$Query, [string]$Expect = '2xx') Invoke-GgHttp -Method POST -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Expect $Expect }
-function Invoke-GgPut    { param([Parameter(Mandatory)][string]$Path, [string]$Token, [string]$JsonBody, [hashtable]$Query, [string]$Expect = '2xx') Invoke-GgHttp -Method PUT -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Expect $Expect }
-function Invoke-GgPatch  { param([Parameter(Mandatory)][string]$Path, [string]$Token, [string]$JsonBody, [hashtable]$Query, [string]$Expect = '2xx') Invoke-GgHttp -Method PATCH -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Expect $Expect }
-function Invoke-GgDelete { param([Parameter(Mandatory)][string]$Path, [string]$Token, [hashtable]$Query, [string]$Expect = '2xx') Invoke-GgHttp -Method DELETE -Path $Path -Token $Token -Query $Query -Expect $Expect }
+function Invoke-GgGet    { param([Parameter(Mandatory)][string]$Path, [string]$Token, [hashtable]$Query, [hashtable]$Headers, [string]$Expect = '2xx') Invoke-GgHttp -Method GET -Path $Path -Token $Token -Query $Query -Headers $Headers -Expect $Expect }
+function Invoke-GgPost   { param([Parameter(Mandatory)][string]$Path, [string]$Token, [string]$JsonBody, [hashtable]$Query, [hashtable]$Headers, [string]$Expect = '2xx') Invoke-GgHttp -Method POST -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Headers $Headers -Expect $Expect }
+function Invoke-GgPut    { param([Parameter(Mandatory)][string]$Path, [string]$Token, [string]$JsonBody, [hashtable]$Query, [hashtable]$Headers, [string]$Expect = '2xx') Invoke-GgHttp -Method PUT -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Headers $Headers -Expect $Expect }
+function Invoke-GgPatch  { param([Parameter(Mandatory)][string]$Path, [string]$Token, [string]$JsonBody, [hashtable]$Query, [hashtable]$Headers, [string]$Expect = '2xx') Invoke-GgHttp -Method PATCH -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Headers $Headers -Expect $Expect }
+function Invoke-GgDelete { param([Parameter(Mandatory)][string]$Path, [string]$Token, [hashtable]$Query, [hashtable]$Headers, [string]$Expect = '2xx') Invoke-GgHttp -Method DELETE -Path $Path -Token $Token -Query $Query -Headers $Headers -Expect $Expect }
 
 # Invoke-GgHttpOrDie <label> <same params as Invoke-GgHttp> — same call, but on a non-success
 # exit code it prints <label> + status + a body excerpt and terminates the process with that
@@ -140,10 +148,11 @@ function Invoke-GgHttpOrDie {
         [string]$Token,
         [string]$JsonBody,
         [hashtable]$Query,
+        [hashtable]$Headers,
         [string]$Expect = '2xx'
     )
 
-    $body = Invoke-GgHttp -Method $Method -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Expect $Expect
+    $body = Invoke-GgHttp -Method $Method -Path $Path -Token $Token -JsonBody $JsonBody -Query $Query -Headers $Headers -Expect $Expect
 
     if ($Script:GgHttpExitCode -ne 0) {
         Write-GgError "$Label failed (HTTP $Script:GgHttpStatus)"

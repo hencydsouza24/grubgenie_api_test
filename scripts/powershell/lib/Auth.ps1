@@ -146,3 +146,22 @@ function Get-GgSessionValue {
     $session = Get-Content $path -Raw | ConvertFrom-Json
     return "$($session.$Key)"
 }
+
+# Get-GgCachedAdminToken → returns a cached admin bearer token. Admin login (Get-GgAdminToken)
+# requires $env:GG_ADMIN_EMAIL/$env:GG_ADMIN_PASSWORD from credentials.env, which most
+# invocations never need — so unlike partnerToken/dinerToken it is NOT minted on every
+# Confirm-GgSession, only lazily here, on first use by an admin-scoped script. Cached in the same
+# session file (adminToken field), mirroring Get-GgSessionValue's own pattern and gg_admin_token
+# in auth.sh — a bash run and a PowerShell run on the same machine share one admin login too.
+function Get-GgCachedAdminToken {
+    $path = Confirm-GgSession
+    $session = Get-Content $path -Raw | ConvertFrom-Json
+    if ($session.adminToken) {
+        return $session.adminToken
+    }
+    $base = Get-GgSessionValue -Key 'base'
+    $token = Get-GgAdminToken -Base $base
+    $session | Add-Member -NotePropertyName adminToken -NotePropertyValue $token -Force
+    ($session | ConvertTo-Json -Compress) | Set-Content -Path $path -NoNewline
+    return $token
+}

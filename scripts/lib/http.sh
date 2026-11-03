@@ -45,7 +45,8 @@ _gg_expect_match() {
   return 1
 }
 
-# gg_http <METHOD> <PATH_OR_URL> [--token T] [--json BODY] [--query K=V]... [--expect SPEC]
+# gg_http <METHOD> <PATH_OR_URL> [--token T] [--json BODY] [--query K=V]... [--header 'K: V']...
+#          [--expect SPEC]
 #
 # stdout: raw response body bytes, nothing else.
 # stderr: one narration line.
@@ -54,16 +55,21 @@ _gg_expect_match() {
 # Returns 0 if status matches --expect (default "2xx"). Otherwise returns WITHOUT dying:
 #   4  unexpected 4xx     5  unexpected 5xx     7  unreachable (DNS/refused/timeout)
 # Callers decide whether to abort — see gg_http_or_die for the common "must succeed" case.
+#
+# --header is for auth schemes --token can't express (e.g. a literal `X-Api-Key: <key>` header,
+# as opposed to `Authorization: Bearer <token>`) — repeatable, each value passed straight to
+# curl's -H.
 gg_http() {
   local method="$1" target="$2"; shift 2
   local token="" json_body="" expect="2xx"
-  local -a query_parts=()
+  local -a query_parts=() header_parts=()
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --token)  token="$2"; shift 2 ;;
       --json)   json_body="$2"; shift 2 ;;
       --query)  query_parts+=("$2"); shift 2 ;;
+      --header) header_parts+=("$2"); shift 2 ;;
       --expect) expect="$2"; shift 2 ;;
       *) gg_die "$GG_EXIT_USAGE" "gg_http: unknown option $1" ;;
     esac
@@ -89,6 +95,15 @@ gg_http() {
 
   local -a curl_args=(-sS -L --connect-timeout "$GG_CONNECT_TIMEOUT" --max-time "$GG_MAX_TIME" -X "$method")
   [ -n "$token" ] && curl_args+=(-H "Authorization: Bearer $token")
+  # Guarded by the length check, not a bare `"${header_parts[@]}"` — see the identical guard
+  # above for query_parts: expanding an EMPTY array under `set -u` on bash 3.2 (macOS default)
+  # dies with "unbound variable".
+  if [ "${#header_parts[@]}" -gt 0 ]; then
+    local header
+    for header in "${header_parts[@]}"; do
+      curl_args+=(-H "$header")
+    done
+  fi
   if [ -n "$json_body" ]; then
     curl_args+=(-H "Content-Type: application/json" -d "$json_body")
   fi

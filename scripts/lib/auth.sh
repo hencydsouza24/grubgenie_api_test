@@ -163,3 +163,25 @@ gg_session_get() {
   path="$(gg_auth_ensure)" || exit $?
   jq -r --arg k "$key" '.[$k]' "$path"
 }
+
+# gg_admin_token → prints a cached admin bearer token. Admin login (gg_auth_admin) requires
+# GG_ADMIN_EMAIL/GG_ADMIN_PASSWORD from credentials.env, which most invocations never need — so
+# unlike partnerToken/dinerToken it is NOT minted on every gg_auth_ensure, only lazily here, on
+# first use by an admin-scoped script. Cached in the same session file (adminToken field) so a
+# bash run and a PowerShell run on the same machine share one admin login too, exactly like
+# partnerToken/dinerToken already do, and so it respects the same TTL/--force refresh cycle.
+gg_admin_token() {
+  local path cached base token updated
+  path="$(gg_auth_ensure)" || exit $?
+  cached="$(jq -r '.adminToken // empty' "$path" 2>/dev/null)"
+  if [ -n "$cached" ]; then
+    printf '%s\n' "$cached"
+    return 0
+  fi
+  base="$(gg_session_get base)" || exit $?
+  token="$(gg_auth_admin "$base")" || exit $?
+  updated="$(jq --arg t "$token" '. + {adminToken: $t}' "$path")" || exit $?
+  printf '%s' "$updated" > "$path"
+  chmod 600 "$path"
+  printf '%s\n' "$token"
+}

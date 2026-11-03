@@ -7,9 +7,12 @@ description: |
   Works on macOS, Linux, Windows (Git Bash), and Windows (PowerShell). Includes test credentials,
   a shared session model, and complete E2E flows (dine-in, pay-in-person, Stripe payment, partner
   management, admin, agent testing, combo ordering, order approval/rejection, Petpooja POS sync
-  and webhook simulation). Use when testing GrubGenie APIs, verifying new features, debugging
-  endpoint behavior, walking through the diner/partner/admin flows interactively, or reproducing
-  auth/permission bugs.
+  and webhook simulation). Also covers settlement, WABA flow definitions/deployments, genie admin
+  (fleet/sessions/thread chat/spawn), admin dashboard metrics, partner voice (connection + call
+  history), queue lifecycle, roles/permissions, all-outlets dashboard, guest/inquiry/insights
+  sub-resources, staff-side ordering, and the reservation widget. Use when testing GrubGenie APIs,
+  verifying new features, debugging endpoint behavior, walking through the diner/partner/admin
+  flows interactively, or reproducing auth/permission bugs.
 allowed-tools: "Bash(python:*) Bash(npm:*) Bash(bash:*) Bash(pwsh:*) WebFetch mcp__plugin_context-mode_context-mode__ctx_execute mcp__plugin_context-mode_context-mode__ctx_search mcp__plugin_context-mode_context-mode__ctx_batch_execute"
 ---
 
@@ -125,6 +128,35 @@ behavior, same exit codes. `order_item`/`order_combo`/`get_pos_menu`/`fetch_pos_
 | `pos` | Petpooja POS: menu, items, sync, config, validate | `bash $SKILL/pos.sh menu\|items\|sync\|config\|validate` |
 | `agent_test` | Chat with the AI agent (unauthenticated) | `bash $SKILL/agent_test.sh "<message>" [dinerId]` |
 | `reset_tables` | Reset all tables to available | `bash $SKILL/reset_tables.sh` |
+| `staff_order` | Staff-side E2E order flow (partner token, not diner) | `bash $SKILL/staff_order.sh <tableId> <itemId> [qty]` |
+| `table_actions` | Split/merge tables, borrow/return a chair | `bash $SKILL/table_actions.sh split\|merge\|borrow-chair\|return-chair` |
+| `crm` | Guest sub-resources, Inquiry, Insights (partner) | `bash $SKILL/crm.sh guest\|inquiry\|insights <subcommand>` |
+| `menu_manage` | Partner combo CRUD, menu bulk-edit/bulk-delete/duplicate | `bash $SKILL/menu_manage.sh combo\|bulk-edit\|bulk-delete\|duplicate` |
+| `diner_ext` | Diner combo browsing, order detail, link-identity | `bash $SKILL/diner_ext.sh combo\|order-detail\|link-identity` |
+| `reservation` | Reservation-widget embed + unauthenticated public reservation flow | `bash $SKILL/reservation.sh embed \| public review\|get\|availability\|modify\|cancel <ref>` |
+| `partner_misc` | Active order by table, WhatsApp agent-settings/audience-segments, front-desk report | `bash $SKILL/partner_misc.sh active-order\|agent-settings\|audience-segments\|front-desk-report` |
+| `partner_settlement` | Partner-side settlement list/summary (read-only) | `bash $SKILL/partner_settlement.sh list\|summary` |
+| `voice` | Partner voice connection config + call history | `bash $SKILL/voice.sh connection <op> \| calls <op>` |
+| `partner_ops` | All-Outlets dashboard reads, Queue lifecycle, Role management | `bash $SKILL/partner_ops.sh outlets\|queue\|role <subcommand>` |
+| `settlement` | Admin settlement CRUD + per-partner/branch reads | `bash $SKILL/settlement.sh admin <subcommand>` |
+| `waba_flows` | Admin WABA flow definitions + deployments | `bash $SKILL/waba_flows.sh definitions\|deployments <subcommand>` |
+| `genie_admin` | Admin genie fleet/sessions/thread inspection + spawn | `bash $SKILL/genie_admin.sh fleet\|sessions\|thread\|spawn` |
+| `dashboard` | Admin dashboard summary/timeseries/top | `bash $SKILL/dashboard.sh summary\|timeseries\|top` |
+| `admin_partner` | Admin partner account + branch agent-context management | `bash $SKILL/admin_partner.sh list\|get\|patch\|branch-context` |
+| `admin_misc` | Admin config/cuisine/diner/kb-topic-catalog/migration/ml/openviking/order/plan/qrcode/waba-resolve/whatsapp-template (dense dispatcher) | `bash $SKILL/admin_misc.sh <group> <subcommand>` |
+| `misc_tools` | Agents module reads, debug health/connections, redirect check, voice tool webhook | `bash $SKILL/misc_tools.sh agents\|debug\|redirect\|voice-webhook` |
+
+All 17 scripts above were added 2026-10-29 to cover a large batch of previously-undocumented
+endpoints (settlement, WABA flows, genie admin, dashboard, partner voice/queue/role/all-outlets,
+guest/inquiry/insights sub-resources, combo + menu bulk management, staff ordering, reservation
+widget + public reservation, and several small admin/ops reads) — see `references/api_reference.md`
+for full route/schema detail on each. Three of them (`admin_misc.sh waba resolve-*`,
+`misc_tools.sh agents topic\|voice-webhook`, `reservation.sh embed`) need extra credentials
+(`GG_WABA_MIDDLEWARE_API_KEY`, `GG_VOICE_TOOL_KEY`, `GG_WIDGET_EMBED_KEY`) — see
+`scripts/config/credentials.example.env`. Anything under `admin_*`/`settlement.sh admin`/
+`waba_flows.sh`/`genie_admin.sh`/`dashboard.sh` auths lazily via `gg_admin_token` (bash) /
+`Get-GgCachedAdminToken` (PowerShell) — needs `GG_ADMIN_EMAIL`/`GG_ADMIN_PASSWORD` the first time
+it's used in a session, cached afterward alongside the partner/diner tokens.
 
 `create_cart`, `order`, and `flow_dine_in_pay` auth themselves automatically if no session
 exists yet — you don't strictly need to run `auth` first, but it's useful to see the tokens.
@@ -255,6 +287,12 @@ accept; `modifications` allowed only on accept; each modification needs exactly 
 
 ## Status
 
-Full bash/PowerShell parity across 16 scripts + shared lib, verified via `evals/run_evals.sh
+Full bash/PowerShell parity across 33 scripts + shared lib, verified via `evals/run_evals.sh
 --offline` (syntax, conventions, secret gate, cross-language exit-code parity). See `evals/` for
 the live-API test suite. Refactor history: `REFACTOR_SUMMARY.md`.
+
+`02_shellcheck` and `05_no_secrets` currently show pre-existing, unrelated findings: shellcheck's
+`SC2034` fires on every readonly constant in `constants.sh` (a known false positive — it can't see
+that other sourced files use them) and `credentials.env` was deliberately committed to this repo's
+git history on 2026-07-29 before this skill's secret-gate convention existed (contains a real
+admin password) — neither is caused by or fixed as part of this update; both predate it.

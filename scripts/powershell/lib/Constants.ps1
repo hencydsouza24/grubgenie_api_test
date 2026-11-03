@@ -20,6 +20,10 @@ $Script:GgFingerprint  = 'grubgenie-stripe-test-002'
 # someone switches. Kept only as an example value for docs/reference.
 $Script:GgBranchId     = '3XSJT'
 
+# GgAccountId — the partner account's accountId (distinct from its Mongo _id/partnerId), used
+# by the admin partner management routes which key on accountId. Example value only.
+$Script:GgAccountId    = 'YFSD9'
+
 # Partner test credentials — a throwaway mailbox against a shared test tenant. Safe to keep
 # tracked; this is what makes the zero-config happy path possible.
 $Script:GgPartnerEmail    = 'munchuser@yopmail.com'

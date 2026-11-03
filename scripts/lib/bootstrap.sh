@@ -33,3 +33,19 @@ source "$GG_LIB_DIR/http.sh"
 source "$GG_LIB_DIR/auth.sh"
 # shellcheck source=scripts/lib/api.sh
 source "$GG_LIB_DIR/api.sh"
+# shellcheck source=scripts/lib/api_admin.sh
+source "$GG_LIB_DIR/api_admin.sh"
+# shellcheck source=scripts/lib/api_admin_misc.sh
+source "$GG_LIB_DIR/api_admin_misc.sh"
+# shellcheck source=scripts/lib/api_misc.sh
+source "$GG_LIB_DIR/api_misc.sh"
+# shellcheck source=scripts/lib/api_partner_voice.sh
+source "$GG_LIB_DIR/api_partner_voice.sh"
+# shellcheck source=scripts/lib/api_partner_ops.sh
+source "$GG_LIB_DIR/api_partner_ops.sh"
+# shellcheck source=scripts/lib/api_partner_crm.sh
+source "$GG_LIB_DIR/api_partner_crm.sh"
+# shellcheck source=scripts/lib/api_partner_catalog.sh
+source "$GG_LIB_DIR/api_partner_catalog.sh"
+# shellcheck source=scripts/lib/api_partner_misc.sh
+source "$GG_LIB_DIR/api_partner_misc.sh"

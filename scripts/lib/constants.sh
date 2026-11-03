@@ -21,6 +21,10 @@ readonly GG_FINGERPRINT="grubgenie-stripe-test-002"
 # for docs/reference — do not wire it back into an auth call.
 readonly GG_BRANCH_ID="3XSJT"
 
+# GG_ACCOUNT_ID — the partner account's accountId (distinct from its Mongo _id/partnerId),
+# used by the admin partner management routes which key on accountId. Example value only.
+readonly GG_ACCOUNT_ID="YFSD9"
+
 # Partner test credentials — a throwaway mailbox against a shared test tenant. Safe to keep
 # tracked; this is what makes the zero-config happy path possible.
 readonly GG_PARTNER_EMAIL="munchuser@yopmail.com"
